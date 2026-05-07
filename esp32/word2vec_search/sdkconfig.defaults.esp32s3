@@ -1,0 +1,38 @@
+# =============================================================================
+# nn20db-word2vec-search — ESP32-S3 specific sdkconfig defaults
+# Merged automatically by idf.py set-target esp32s3 alongside sdkconfig.defaults
+# =============================================================================
+
+# -----------------------------------------------------------------------------
+# PSRAM — 8 MB AP_3v3 Octal PSRAM (ESP32-S3R8 on Waveshare board)
+# Use Octal (OPI) mode; Quad mode causes boot abort on AP_3v3 PSRAM.
+# Allow malloc() to spill to PSRAM for large allocations (nn20db cache arena).
+# -----------------------------------------------------------------------------
+CONFIG_SPIRAM=y
+CONFIG_SPIRAM_MODE_OCT=y
+CONFIG_SPIRAM_USE_MALLOC=y
+CONFIG_SPIRAM_MALLOC_ALWAYSINTERNAL=16384
+CONFIG_SPIRAM_MALLOC_RESERVE_INTERNAL=32768
+
+# -----------------------------------------------------------------------------
+# FATFS — prefer external RAM for FAT work buffers
+# -----------------------------------------------------------------------------
+CONFIG_FATFS_ALLOC_PREFER_EXTRAM=y
+
+# -----------------------------------------------------------------------------
+# Wi-Fi — enable 2.4 GHz Wi-Fi
+# -----------------------------------------------------------------------------
+CONFIG_ESP_WIFI_ENABLED=y
+CONFIG_ESP_WIFI_STATIC_RX_BUFFER_NUM=10
+CONFIG_ESP_WIFI_DYNAMIC_RX_BUFFER_NUM=32
+
+# -----------------------------------------------------------------------------
+# Flash — 16 MB (Waveshare ESP32-S3-Touch-LCD-1.47)
+# -----------------------------------------------------------------------------
+CONFIG_ESPTOOLPY_FLASHSIZE_16MB=y
+CONFIG_PARTITION_TABLE_CUSTOM=n
+
+# -----------------------------------------------------------------------------
+# LVGL — configure stack and buffer sizes for 172×320 display
+# If using the esp_lvgl_port component these are overridden in menuconfig.
+# -----------------------------------------------------------------------------

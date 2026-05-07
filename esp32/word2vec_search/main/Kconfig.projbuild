@@ -1,0 +1,15 @@
+menu "Word2Vec Search Configuration"
+
+    config WORD2VEC_WIFI_SSID
+        string "Wi-Fi SSID"
+        default "myssid"
+        help
+            SSID of the Wi-Fi network to connect to.
+
+    config WORD2VEC_WIFI_PASSWORD
+        string "Wi-Fi Password"
+        default "mypassword"
+        help
+            Password for the Wi-Fi network.
+
+endmenu

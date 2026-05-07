@@ -1,0 +1,201 @@
+================================================================================
+  nn20db-embedded-word2vect  —  FAST START
+================================================================================
+
+PREREQUISITES
+  • Docker (for ESP32 builds)
+  • git, make, gcc, zlib-dev  (for Linux index builder)
+  • Python 3.9+ with gzip, struct, ctypes (stdlib only)
+  • GoogleNews-vectors-negative300.bin.gz  (download separately, ~1.5 GB)
+  • nn20db SDK release-1.1.0 tarballs (see step 1)
+
+--------------------------------------------------------------------------------
+STEP 1 — Install the nn20db SDK
+--------------------------------------------------------------------------------
+
+  Clone the SDK repo and install both tarballs.
+  Tarballs are attached to the GitHub release:
+    https://github.com/brunokeymolen/nn20db-sdk/releases/tag/release-1.1.0
+
+  From inside this project directory:
+
+    git clone https://github.com/brunokeymolen/nn20db-sdk nn20db-sdk-repo
+
+    # Linux SDK (needed for build_index and the Python CLI)
+    nn20db-sdk-repo/scripts/install-sdk.sh linux \
+        <path-or-URL-to-nn20db-sdk-linux-1.1.0.tar.gz>
+
+    # ESP32-S3 SDK (needed for the ESP32 firmware)
+    nn20db-sdk-repo/scripts/install-sdk.sh esp32 \
+        <path-or-URL-to-nn20db-sdk-esp32s3-1.1.0.tar.gz>
+
+  After install the layout under sdk/ is:
+    sdk/linux/current/   — Linux shared library + pkg-config
+    sdk/esp32/current/   — ESP32 IDF component (nn20db/)
+
+  The sdk/ directory is gitignored; repeat this step on each fresh clone.
+
+--------------------------------------------------------------------------------
+STEP 2 — Build the Linux index builder
+--------------------------------------------------------------------------------
+
+  Requires: nn20db Linux SDK (step 1), zlib-dev, libm, gcc/make
+
+    cd linux/build_index
+    make
+
+  Binary produced: ./build_word2vec_index
+
+--------------------------------------------------------------------------------
+STEP 3 — Build the HNSW index from GoogleNews vectors
+--------------------------------------------------------------------------------
+
+  Recommended first run: limit to 200 000 words (fast, ~2 GB RAM peak).
+  Full 3M-word run: ~6–8 hours, ~18 GB RAM.
+
+    ./build_word2vec_index \
+        /path/to/GoogleNews-vectors-negative300.bin.gz \
+        /path/to/output_db \
+        --limit 200000
+
+  Options:
+    --limit N     only index the first N words (default: all)
+    --m N         HNSW M parameter, default 32
+    --ef N        ef_construction, default 400
+    --test N      run self-test with N random queries after build, default 100
+
+  The program will print recall@10 at the end. Aim for recall > 0.90.
+
+  The database directory can be on any local filesystem (ext4, etc.).
+  For SD card use 8.3 filenames: copy it as /sdcard/nand0/word2vec/
+
+--------------------------------------------------------------------------------
+STEP 4 — Test with the Linux CLI
+--------------------------------------------------------------------------------
+
+  Requires: nn20db Linux SDK installed (step 1), Python 3
+
+    cd linux/cli
+
+    # Interactive REPL (local Linux search)
+    python word2vec_cli.py \
+        --db /path/to/output_db \
+        --word-vectors /path/to/GoogleNews-vectors-negative300.bin.gz \
+        --limit 200000
+
+  At the prompt:
+    > king                     # search for a word
+    > king - man + woman       # vector arithmetic (classic analogy)
+    > queen                    # any expression
+
+  Type 'quit' or Ctrl-D to exit.
+
+  One-shot from command line:
+    python word2vec_cli.py --db /path/to/db --word-vectors ... \
+        --query "king - man + woman" --top-k 5
+
+--------------------------------------------------------------------------------
+STEP 5 — Copy database to SD card
+--------------------------------------------------------------------------------
+
+  Format SD card as FAT32.  Copy the database directory, preserving 8.3 names:
+
+    cp -r /path/to/output_db/* /media/<sdcard>/nand0/word2vec/
+
+  Required SD card layout:
+    <SD root>/nand0/word2vec/   ← nn20db database files
+
+  Insert SD card into the ESP32-S3 board before flashing or reset after.
+
+--------------------------------------------------------------------------------
+STEP 6 — Build and flash the ESP32-S3 firmware (using Docker)
+--------------------------------------------------------------------------------
+
+  No host IDF installation required — the container handles everything.
+
+    cd esp32/word2vec_search
+
+    # Build the Docker image (first time only, ~2 GB download)
+    make docker-image
+
+    # Set ESP32-S3 target and compile
+    make docker-build
+
+    # Flash to board (default port: /dev/ttyACM0)
+    make docker-flash
+
+    # Or flash and open serial monitor in one step
+    make docker-flash-monitor
+
+    # Override serial port
+    make docker-flash-monitor PORT=/dev/ttyUSB0
+
+  The container mounts the project root read-write, so build artefacts appear
+  in esp32/word2vec_search/build/ on your host.
+
+  If you have ESP-IDF sourced on the host you can also use native targets:
+    make set-target-s3
+    make build
+    make flash-monitor
+
+--------------------------------------------------------------------------------
+STEP 7 — Configure Wi-Fi credentials
+--------------------------------------------------------------------------------
+
+  Before the first flash, set your Wi-Fi SSID and password:
+
+    cd esp32/word2vec_search
+
+    # With host IDF:
+    idf.py menuconfig
+      → "Word2Vec Search Configuration" → WiFi SSID / WiFi Password
+
+    # Or inside the container:
+    docker run --rm -it \
+      -v $(pwd)/../..:/workspace \
+      -w /workspace/esp32/word2vec_search \
+      nn20db-esp32-idf \
+      idf.py menuconfig
+
+  Alternatively edit sdkconfig directly:
+    CONFIG_WORD2VEC_WIFI_SSID="YourSSID"
+    CONFIG_WORD2VEC_WIFI_PASS="YourPassword"
+
+--------------------------------------------------------------------------------
+STEP 8 — Search from Linux CLI via ESP32 (phase 1 demo)
+--------------------------------------------------------------------------------
+
+  Once the ESP32 is running and connected to Wi-Fi, the board will print its
+  IP address on the serial monitor.
+
+    python linux/cli/word2vec_cli.py \
+        --word-vectors /path/to/GoogleNews-vectors-negative300.bin.gz \
+        --limit 200000 \
+        --esp32 <ESP32_IP>
+
+  At the prompt, expressions are evaluated on Linux; the resulting 300-D vector
+  is sent over TCP to the ESP32 (port 9900) which performs the HNSW search and
+  returns top-k results.
+
+--------------------------------------------------------------------------------
+WIRE PROTOCOL (port 9900)
+--------------------------------------------------------------------------------
+
+  Request  : 300 × float32 little-endian  =  1200 bytes
+  Response : k × (32-byte word + 4-byte float32 distance LE)  =  k × 36 bytes
+  k default: 10
+
+--------------------------------------------------------------------------------
+HNSW PARAMETERS
+--------------------------------------------------------------------------------
+
+  Parameter          Linux build  Linux CLI  ESP32 search
+  ─────────────────  ───────────  ─────────  ────────────
+  M                  32           —          —
+  ef_construction    400          —          —
+  ef_search          —            100        32
+  Metric             L2 (norm'd)  L2         L2
+
+  Tune ef_search lower on ESP32 if search is too slow; raise it for more recall.
+
+================================================================================

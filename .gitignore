@@ -1,0 +1,32 @@
+# SDK binaries (populated by install-sdk.sh)
+sdk/linux/
+sdk/esp32/
+
+# Data files
+*.bin.gz
+*.bin
+
+# Linux build artefacts
+linux/build_index/build/
+linux/build_index/build_word2vec_index
+
+# Database files (nn20db LFS directory trees, not tracked)
+db/
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+.venv/
+venv/
+
+# ESP32 IDF build artefacts
+esp32/word2vec_search/build/
+esp32/word2vec_search/sdkconfig
+esp32/word2vec_search/managed_components/
+esp32/word2vec_search/dependencies.lock
+
+# Editor
+.vscode/settings.json
+*.swp
+*.swo
