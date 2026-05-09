@@ -7,6 +7,7 @@
 # -----------------------------------------------------------------------------
 # FreeRTOS — generous stack sizes for nn20db search and TCP tasks
 # -----------------------------------------------------------------------------
+CONFIG_MAIN_TASK_STACK_SIZE=16384
 CONFIG_PTHREAD_TASK_STACK_SIZE_DEFAULT=8192
 CONFIG_FREERTOS_IDLE_TASK_STACKSIZE=2048
 
@@ -36,3 +37,17 @@ CONFIG_LWIP_TCP_WND_DEFAULT=5744
 # -----------------------------------------------------------------------------
 CONFIG_ESP_CONSOLE_USB_CDC=y
 CONFIG_ESP_CONSOLE_SECONDARY_NONE=y
+
+# -----------------------------------------------------------------------------
+# Partition table — custom CSV to give the app partition enough room
+# -----------------------------------------------------------------------------
+CONFIG_PARTITION_TABLE_CUSTOM=y
+CONFIG_PARTITION_TABLE_CUSTOM_FILENAME="partitions.csv"
+
+# -----------------------------------------------------------------------------
+# LVGL — swap RGB565 byte order to match SPI panel (big-endian on the wire)
+# -----------------------------------------------------------------------------
+CONFIG_LV_COLOR_16_SWAP=y
+CONFIG_LV_FONT_MONTSERRAT_20=y
+CONFIG_LV_FONT_MONTSERRAT_24=y
+CONFIG_LV_FONT_MONTSERRAT_36=y

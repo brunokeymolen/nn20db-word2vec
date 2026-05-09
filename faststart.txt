@@ -13,21 +13,23 @@ PREREQUISITES
 STEP 1 — Install the nn20db SDK
 --------------------------------------------------------------------------------
 
-  Clone the SDK repo and install both tarballs.
-  Tarballs are attached to the GitHub release:
+  Download the install script and both tarballs from the GitHub release page:
     https://github.com/brunokeymolen/nn20db-sdk/releases/tag/release-1.1.0
 
-  From inside this project directory:
+  No git clone needed — fetch the script directly:
 
-    git clone https://github.com/brunokeymolen/nn20db-sdk nn20db-sdk-repo
+    curl -fLO https://raw.githubusercontent.com/brunokeymolen/nn20db-sdk/release-1.1.0/scripts/install-sdk.sh
+    chmod +x install-sdk.sh
+
+    (!) CHANGE LINE 32: repo_root="$(cd "${script_dir}" && pwd)"
 
     # Linux SDK (needed for build_index and the Python CLI)
-    nn20db-sdk-repo/scripts/install-sdk.sh linux \
-        <path-or-URL-to-nn20db-sdk-linux-1.1.0.tar.gz>
+    ./install-sdk.sh linux https://github.com/brunokeymolen/nn20db-sdk/releases/download/release-1.1.0/nn20db-sdk-linux-1.1.0.tar.gz
 
     # ESP32-S3 SDK (needed for the ESP32 firmware)
-    nn20db-sdk-repo/scripts/install-sdk.sh esp32 \
-        <path-or-URL-to-nn20db-sdk-esp32s3-1.1.0.tar.gz>
+    ./install-sdk.sh esp32 https://github.com/brunokeymolen/nn20db-sdk/releases/download/release-1.1.0/nn20db-sdk-esp32s3-1.1.0.tar.gz
+
+    rm install-sdk.sh
 
   After install the layout under sdk/ is:
     sdk/linux/current/   — Linux shared library + pkg-config

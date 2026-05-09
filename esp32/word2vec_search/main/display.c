@@ -6,19 +6,19 @@
  *   Touch:    AXS5106L, I2C
  *   Board:    Waveshare ESP32-S3-Touch-LCD-1.47
  *
- * Pin assignments (from Waveshare schematic / wiki):
+ * Pin assignments (from Waveshare official ESP-IDF factory demo / schematic):
  *   SPI LCD:
- *     SCK  = GPIO 10
- *     MOSI = GPIO 11
- *     CS   = GPIO 9
- *     DC   = GPIO 8
- *     RST  = GPIO 14
- *     BL   = GPIO 2
+ *     SCK  = GPIO 38
+ *     MOSI = GPIO 39
+ *     CS   = GPIO 21
+ *     DC   = GPIO 45
+ *     RST  = GPIO 40
+ *     BL   = GPIO 46
  *   I2C touch:
- *     SDA  = GPIO 4
- *     SCL  = GPIO 5
- *     INT  = GPIO 6 (optional)
- *     RST  = GPIO 7 (optional)
+ *     SDA  = GPIO 42
+ *     SCL  = GPIO 41
+ *     INT  = GPIO 47 (optional)
+ *     RST  = GPIO 48 (optional)
  *
  * The implementation uses:
  *   - esp_lcd panel API (IDF component) for low-level SPI LCD driving
@@ -56,22 +56,22 @@ static const char *TAG = "display";
 /* ── pin definitions ─────────────────────────────────────────────────────── */
 
 #define LCD_SPI_HOST     SPI2_HOST
-#define LCD_WIDTH        172
-#define LCD_HEIGHT       320
+#define LCD_WIDTH        320   /* landscape: physical 320 px wide */
+#define LCD_HEIGHT       172   /* landscape: physical 172 px tall */
 #define LCD_BIT_DEPTH    16
 
-#define PIN_LCD_SCK      10
-#define PIN_LCD_MOSI     11
-#define PIN_LCD_CS        9
-#define PIN_LCD_DC        8
-#define PIN_LCD_RST      14
-#define PIN_LCD_BL        2
+#define PIN_LCD_SCK      38
+#define PIN_LCD_MOSI     39
+#define PIN_LCD_CS       21
+#define PIN_LCD_DC       45
+#define PIN_LCD_RST      40
+#define PIN_LCD_BL       46
 
-#define PIN_TOUCH_SDA     4
-#define PIN_TOUCH_SCL     5
+#define PIN_TOUCH_SDA    42
+#define PIN_TOUCH_SCL    41
 /* INT and RST are optional; set to -1 to skip */
-#define PIN_TOUCH_INT     6
-#define PIN_TOUCH_RST     7
+#define PIN_TOUCH_INT    47
+#define PIN_TOUCH_RST    48
 
 #define TOUCH_I2C_PORT    I2C_NUM_0
 #define TOUCH_ADDR        0x3B  /* AXS5106L default address */
@@ -87,7 +87,8 @@ static lv_obj_t *s_scr_searching;
 static lv_obj_t *s_scr_results;
 
 /* Idle screen widgets */
-static lv_obj_t *s_lbl_title;
+static lv_obj_t *s_lbl_title;      /* "nn20db" */
+static lv_obj_t *s_lbl_subtitle;   /* "word2vec" */
 static lv_obj_t *s_lbl_ip;
 static lv_obj_t *s_lbl_waiting;
 
@@ -120,7 +121,7 @@ static const lcd_init_cmd_t JD9853_INIT_CMDS[] = {
     { 0xC5, { 0x0F }, 1 },
     { 0xB1, { 0xA0 }, 1 },
     { 0xB4, { 0x02 }, 1 },
-    { 0x36, { 0x00 }, 1 },   /* MADCTL — portrait, RGB order */
+    { 0x36, { 0x20 }, 1 },   /* MADCTL — landscape (MV only): swap axes, no mirror, RGB order */
     { 0x3A, { 0x55 }, 1 },   /* COLMOD — 16 bpp */
     { 0xE0, { 0x00,0x01,0x08,0x09,0x0C,0x29,0x2F,
               0x43,0x50,0x3A,0x15,0x16,0x21,0x22,0x0F }, 15 },
@@ -178,12 +179,19 @@ static void build_idle_screen(void) {
     s_scr_idle = lv_obj_create(NULL);
     lv_obj_set_style_bg_color(s_scr_idle, lv_color_hex(0x0D1117), 0);
 
-    /* title */
+    /* line 1: "nn20db" */
     s_lbl_title = lv_label_create(s_scr_idle);
-    lv_label_set_text(s_lbl_title, "Word2Vec Search");
+    lv_label_set_text(s_lbl_title, "nn20db");
     lv_obj_set_style_text_color(s_lbl_title, lv_color_hex(0x58A6FF), 0);
-    lv_obj_set_style_text_font(s_lbl_title, &lv_font_montserrat_16, 0);
-    lv_obj_align(s_lbl_title, LV_ALIGN_TOP_MID, 0, 20);
+    lv_obj_set_style_text_font(s_lbl_title, &lv_font_montserrat_36, 0);
+    lv_obj_align(s_lbl_title, LV_ALIGN_TOP_MID, 0, 6);
+
+    /* line 2: "word2vec" */
+    s_lbl_subtitle = lv_label_create(s_scr_idle);
+    lv_label_set_text(s_lbl_subtitle, "word2vec");
+    lv_obj_set_style_text_color(s_lbl_subtitle, lv_color_hex(0x58A6FF), 0);
+    lv_obj_set_style_text_font(s_lbl_subtitle, &lv_font_montserrat_36, 0);
+    lv_obj_align(s_lbl_subtitle, LV_ALIGN_TOP_MID, 0, 48);
 
     /* horizontal rule */
     lv_obj_t *line = lv_line_create(s_scr_idle);
@@ -191,36 +199,38 @@ static void build_idle_screen(void) {
     lv_line_set_points(line, pts, 2);
     lv_obj_set_style_line_color(line, lv_color_hex(0x30363D), 0);
     lv_obj_set_style_line_width(line, 1, 0);
-    lv_obj_align(line, LV_ALIGN_TOP_MID, 0, 44);
+    lv_obj_align(line, LV_ALIGN_TOP_MID, 0, 92);
 
     /* IP address */
     s_lbl_ip = lv_label_create(s_scr_idle);
     lv_label_set_text(s_lbl_ip, "Wi-Fi: connecting...");
-    lv_obj_set_style_text_color(s_lbl_ip, lv_color_hex(0x8B949E), 0);
-    lv_obj_set_style_text_font(s_lbl_ip, &lv_font_montserrat_12, 0);
-    lv_obj_align(s_lbl_ip, LV_ALIGN_TOP_MID, 0, 54);
+    lv_obj_set_style_text_color(s_lbl_ip, lv_color_hex(0xE6EDF3), 0);
+    lv_obj_set_style_text_font(s_lbl_ip, &lv_font_montserrat_20, 0);
+    lv_obj_align(s_lbl_ip, LV_ALIGN_TOP_MID, 0, 100);
 
     /* waiting label */
     s_lbl_waiting = lv_label_create(s_scr_idle);
     lv_label_set_text(s_lbl_waiting, "Waiting for query...");
-    lv_obj_set_style_text_color(s_lbl_waiting, lv_color_hex(0xC9D1D9), 0);
-    lv_obj_set_style_text_font(s_lbl_waiting, &lv_font_montserrat_14, 0);
-    lv_obj_align(s_lbl_waiting, LV_ALIGN_CENTER, 0, 0);
+    lv_obj_set_style_text_color(s_lbl_waiting, lv_color_hex(0xE6EDF3), 0);
+    lv_obj_set_style_text_font(s_lbl_waiting, &lv_font_montserrat_20, 0);
+    lv_obj_align(s_lbl_waiting, LV_ALIGN_BOTTOM_MID, 0, -12);
 }
 
 static void build_searching_screen(void) {
     s_scr_searching = lv_obj_create(NULL);
     lv_obj_set_style_bg_color(s_scr_searching, lv_color_hex(0x0D1117), 0);
 
+    /* spinner left, label right — uses the wide landscape space */
     s_spinner = lv_spinner_create(s_scr_searching, 1000, 60);
-    lv_obj_set_size(s_spinner, 64, 64);
+    lv_obj_set_size(s_spinner, 80, 80);
     lv_obj_set_style_arc_color(s_spinner, lv_color_hex(0x58A6FF), LV_PART_INDICATOR);
-    lv_obj_align(s_spinner, LV_ALIGN_CENTER, 0, -20);
+    lv_obj_align(s_spinner, LV_ALIGN_CENTER, -60, 0);
 
     s_lbl_searching = lv_label_create(s_scr_searching);
     lv_label_set_text(s_lbl_searching, "Searching...");
     lv_obj_set_style_text_color(s_lbl_searching, lv_color_hex(0x8B949E), 0);
-    lv_obj_align(s_lbl_searching, LV_ALIGN_CENTER, 0, 40);
+    lv_obj_set_style_text_font(s_lbl_searching, &lv_font_montserrat_24, 0);
+    lv_obj_align(s_lbl_searching, LV_ALIGN_CENTER, 40, 0);
 }
 
 static void build_results_screen(void) {
@@ -231,11 +241,11 @@ static void build_results_screen(void) {
     s_lbl_result_title = lv_label_create(s_scr_results);
     lv_label_set_text(s_lbl_result_title, "Results");
     lv_obj_set_style_text_color(s_lbl_result_title, lv_color_hex(0x58A6FF), 0);
-    lv_obj_set_style_text_font(s_lbl_result_title, &lv_font_montserrat_14, 0);
+    lv_obj_set_style_text_font(s_lbl_result_title, &lv_font_montserrat_20, 0);
     lv_obj_align(s_lbl_result_title, LV_ALIGN_TOP_MID, 0, 4);
 
     s_list_results = lv_list_create(s_scr_results);
-    lv_obj_set_size(s_list_results, LCD_WIDTH - 8, LCD_HEIGHT - 30);
+    lv_obj_set_size(s_list_results, LCD_WIDTH - 8, LCD_HEIGHT - 34);
     lv_obj_align(s_list_results, LV_ALIGN_BOTTOM_MID, 0, -4);
     lv_obj_set_style_bg_color(s_list_results, lv_color_hex(0x161B22), 0);
     lv_obj_set_style_border_color(s_list_results, lv_color_hex(0x30363D), 0);
@@ -244,7 +254,7 @@ static void build_results_screen(void) {
 /* ── public API ──────────────────────────────────────────────────────────── */
 
 void display_init(void) {
-    ESP_LOGI(TAG, "Initialising display (JD9853, 172x320)");
+    ESP_LOGI(TAG, "Initialising display (JD9853, 320x172 landscape)");
 
     /* backlight */
     gpio_config_t bl_cfg = {
@@ -298,15 +308,18 @@ void display_init(void) {
     /* Create a minimal panel handle for draw_bitmap */
     esp_lcd_panel_dev_config_t panel_cfg = {
         .reset_gpio_num = -1,
-        .color_space    = ESP_LCD_COLOR_SPACE_BGR,
+        .color_space    = ESP_LCD_COLOR_SPACE_RGB, /* MADCTL BGR=0, so RGB order */
         .bits_per_pixel = LCD_BIT_DEPTH,
     };
     ESP_ERROR_CHECK(esp_lcd_new_panel_st7789(io_handle, &panel_cfg, &s_panel));
-    esp_lcd_panel_swap_xy(s_panel, false);
-    esp_lcd_panel_mirror(s_panel, false, false);
-
-    /* backlight on */
-    gpio_set_level(PIN_LCD_BL, 1);
+    /*
+     * JD9853 controller has a 240-row address space in landscape (was 240 cols
+     * in portrait).  The 172 physical rows are centered, so row gap = 34.
+     * Column gap is 0 because the controller column count matches 320.
+     */
+    esp_lcd_panel_set_gap(s_panel, 0, 34);
+    /* do NOT call swap_xy / mirror here — they re-issue MADCTL and would
+       override the value we already sent in jd9853_init() */
 
     /* LVGL init */
     s_lvgl_mux = xSemaphoreCreateMutex();
@@ -319,10 +332,10 @@ void display_init(void) {
 
     static lv_disp_drv_t disp_drv;
     lv_disp_drv_init(&disp_drv);
-    disp_drv.hor_res   = LCD_WIDTH;
-    disp_drv.ver_res   = LCD_HEIGHT;
-    disp_drv.flush_cb  = lvgl_flush_cb;
-    disp_drv.draw_buf  = &draw_buf;
+    disp_drv.hor_res    = LCD_WIDTH;
+    disp_drv.ver_res    = LCD_HEIGHT;
+    disp_drv.flush_cb   = lvgl_flush_cb;
+    disp_drv.draw_buf   = &draw_buf;
     s_disp = lv_disp_drv_register(&disp_drv);
 
     /* LVGL tick timer (2 ms) */
@@ -344,6 +357,7 @@ void display_init(void) {
 
     /* LVGL handler task */
     xTaskCreate(lvgl_task, "lvgl", 8 * 1024, NULL, tskIDLE_PRIORITY + 3, NULL);
+    gpio_set_level(PIN_LCD_BL, 1);
 
     ESP_LOGI(TAG, "Display init complete");
 }
@@ -377,16 +391,13 @@ void display_show_results(const char words[][32], int count, float ms) {
 
     /* add each result as a list button */
     for (int i = 0; i < count; i++) {
-        char label[40];
-        char word[33];
-        memcpy(word, words[i], 32);
-        word[32] = '\0';
-        snprintf(label, sizeof(label), "%2d. %s", i + 1, word);
+        char label[48];   /* 11 (int) + 2 (". ") + 32 (word) + NUL */
+        snprintf(label, sizeof(label), "%d. %.32s", i + 1, words[i]);
 
         lv_obj_t *btn = lv_list_add_btn(s_list_results, NULL, label);
         lv_obj_set_style_text_color(btn, lv_color_hex(0xC9D1D9), 0);
         lv_obj_set_style_bg_color(btn, lv_color_hex(0x161B22), 0);
-        lv_obj_set_style_text_font(btn, &lv_font_montserrat_12, 0);
+        lv_obj_set_style_text_font(btn, &lv_font_montserrat_20, 0);
     }
 
     lv_disp_load_scr(s_scr_results);

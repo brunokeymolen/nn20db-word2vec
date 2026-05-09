@@ -225,7 +225,7 @@ def esp32_search(
     payload = query_vec.astype(np.float32).tobytes()
     assert len(payload) == WIRE_QUERY_BYTES
 
-    with socket.create_connection((host, port), timeout=10.0) as s:
+    with socket.create_connection((host, port), timeout=60.0) as s:
         s.sendall(payload)
 
         response_size = k * WIRE_RESULT_BYTES
@@ -351,7 +351,29 @@ def main():
     if _HAVE_NN20DB:
         print(f"Opening nn20db at '{args.db}' ...")
         try:
-            db = NN20Db.open(args.db)
+            cfg = DatabaseConfig(
+                dimension=DIM,
+                metadata_size=METADATA_SIZE,
+                metric="euclidean_f32",
+                storage=LfsStorageConfig(
+                    device_path=args.db,
+                    lane_cache_size_kb=1024,
+                    lane_size_mb=256,
+                    log_size_mb=1,
+                    log_index_buckets=512,
+                    object_cache_size_bytes=4096,
+                    read_ahead_size_bytes=4096,
+                    block_size=4096,
+                    disable_crc=True,
+                ),
+                cache=CacheConfig(enabled=True, max_entries=1048576),
+                index=HnswConfig(
+                    ef_search=args.ef,
+                    search_threads=1,
+                    search_seen_set_capacity=20000,
+                ),
+            )
+            db = NN20Db.open_with_config(cfg)
             print("  nn20db opened OK")
         except Exception as e:
             print(f"  Warning: could not open nn20db: {e}")

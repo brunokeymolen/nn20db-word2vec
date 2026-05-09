@@ -4,7 +4,7 @@ if(NOT DEFINED IDF_TARGET)
     set(IDF_TARGET "esp32s3")
 endif()
 
-get_filename_component(REPO_ROOT "${CMAKE_CURRENT_LIST_DIR}/../../.." ABSOLUTE)
+get_filename_component(REPO_ROOT "${CMAKE_CURRENT_LIST_DIR}/../.." ABSOLUTE)
 set(NN20DB_COMPONENT_DIR "${REPO_ROOT}/sdk/esp32/current/esp32/component/nn20db")
 
 if(NOT EXISTS "${NN20DB_COMPONENT_DIR}/CMakeLists.txt")

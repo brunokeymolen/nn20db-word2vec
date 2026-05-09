@@ -57,7 +57,11 @@ docker-build: docker-image
 	$(DOCKER_RUN) sh -c "[ -f sdkconfig ] || idf.py set-target esp32s3; idf.py build"
 
 docker-flash: docker-image
-	$(DOCKER_RUN_TTY) idf.py -p $(PORT) flash
+	$(DOCKER_RUN_TTY) sh -c \
+		"cd build && /opt/esp/python_env/idf5.5_py3.12_env/bin/python \
+		/opt/esp/idf/components/esptool_py/esptool/esptool.py \
+		--chip esp32s3 -p $(PORT) --before default_reset --after no_reset \
+		write_flash @flash_args"
 
 docker-monitor: docker-image
 	$(DOCKER_RUN_TTY) idf.py -p $(PORT) monitor --no-reset

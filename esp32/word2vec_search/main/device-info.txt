@@ -1,0 +1,5 @@
+
+LCD SCK/MOSI/CS/DC/RST/BL	38,39,21,45,40,46
+Touch SDA/SCL/INT/RST	    42,41,47,48
+SD driver	                native SDMMC
+SD CLK/CMD/D0/D1/D2/D3		16/15/17/18/13/14

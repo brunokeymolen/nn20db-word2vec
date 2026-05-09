@@ -95,23 +95,27 @@ ESP32 → Linux:   10 × (32-byte word + 4-byte float32)  =  360 bytes
 
 ## Pin assignments
 
-| Signal    | GPIO | Notes                          |
-|-----------|------|--------------------------------|
-| LCD SCK   | 10   | SPI clock                      |
-| LCD MOSI  | 11   | SPI data                       |
-| LCD CS    |  9   | SPI chip select                |
-| LCD DC    |  8   | Data/command                   |
-| LCD RST   | 14   | Hardware reset                 |
-| LCD BL    |  2   | Backlight PWM / GPIO           |
-| Touch SDA |  4   | I2C data (AXS5106L)            |
-| Touch SCL |  5   | I2C clock                      |
-| SD MOSI   | 35   | SD card SPI                    |
-| SD MISO   | 36   |                                |
-| SD CLK    | 37   |                                |
-| SD CS     | 34   |                                |
+| Signal    | GPIO | Notes                                   |
+|-----------|------|-----------------------------------------|
+| LCD SCK   | 38   | SPI clock                               |
+| LCD MOSI  | 39   | SPI data                                |
+| LCD CS    | 21   | SPI chip select                         |
+| LCD DC    | 45   | Data/command                            |
+| LCD RST   | 40   | Hardware reset                          |
+| LCD BL    | 46   | Backlight PWM                           |
+| Touch SDA | 42   | I2C data (AXS5106L)                     |
+| Touch SCL | 41   | I2C clock                               |
+| Touch INT | 47   | Interrupt (optional)                    |
+| Touch RST | 48   | Reset (optional)                        |
+| SD CLK    | 16   | SDMMC native clock                      |
+| SD CMD    | 15   | SDMMC command                           |
+| SD D0     | 17   | SDMMC data 0                            |
+| SD D1     | 18   | SDMMC data 1                            |
+| SD D2     | 13   | SDMMC data 2                            |
+| SD D3     | 14   | SDMMC data 3                            |
 
-> **Verify pin assignments** against the actual Waveshare schematic for
-> your board revision before flashing.
+> Pin assignments verified against the Waveshare ESP32-S3-Touch-LCD-1.47
+> official ESP-IDF factory demo BSP (`bsp_display.h`, `bsp_sdcard.h`).
 
 ## sdkconfig files
 

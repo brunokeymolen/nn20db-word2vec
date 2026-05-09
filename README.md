@@ -74,8 +74,8 @@ relative to the nn20db-sdk repo root (not this project). Adjust
 Download the GoogleNews vectors (publicly available, ~1.5 GB compressed):
 
 ```bash
-# Official mirror:
-wget https://s3.amazonaws.com/dl4j-distribution/GoogleNews-vectors-negative300.bin.gz
+# Huggingface:
+wget https://huggingface.co/NathaNn1111/word2vec-google-news-negative-300-bin/resolve/main/GoogleNews-vectors-negative300.bin?download=true
 # or:
 # https://drive.google.com/file/d/0B7XkCwpI5KDYNlNUTTlSS21pQmM/
 ```
@@ -146,6 +146,8 @@ The ESP32 firmware expects the database at `/sdcard/nand0/word2vec/` on the
 mounted FAT volume. Path components must be ≤ 8.3 characters.
 
 ## 6. Build and flash ESP32-S3
+
+* install espressif sdk or use the container in the project. An easy way it using visual studio code and do: 'F1' -> Open Container
 
 ```bash
 cd esp32/word2vec_search

@@ -23,6 +23,7 @@ venv/
 # ESP32 IDF build artefacts
 esp32/word2vec_search/build/
 esp32/word2vec_search/sdkconfig
+esp32/word2vec_search/sdkconfig.defaults.local
 esp32/word2vec_search/managed_components/
 esp32/word2vec_search/dependencies.lock
 
