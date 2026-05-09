@@ -8,7 +8,7 @@
  * length, and build a persistent nn20db HNSW index.
  *
  * Usage:
- *   ./build_word2vec_index <input.bin> <db_path> [--limit N] [--ef-search N]
+ *   ./build_word2vec_index <input.bin> <db_path> [--limit N] [--ef-search N] [--test N]
  *
  * On first run the database is created and all vectors are inserted.
  * On subsequent runs the existing database is opened and a recall self-test
@@ -30,7 +30,7 @@
 #define WORD2VEC_DIM        300
 #define METADATA_SIZE       32      /* sizeof(word_meta_t) */
 #define DEFAULT_EF_SEARCH   100
-#define SELF_TEST_QUERIES   200     /* queries used for recall self-test */
+#define DEFAULT_SELF_TEST_QUERIES 10000   /* queries used for recall self-test */
 #define SELF_TEST_K         10
 #define COMPACT_INTERVAL    10000   /* compact + sync every N insertions */
 
@@ -57,6 +57,12 @@ static void normalize_l2(float *vec, int dim) {
             vec[i] *= inv;
         }
     }
+}
+
+static void set_word_meta(word_meta_t *meta, const char *word) {
+    memset(meta, 0, sizeof(*meta));
+    size_t n = strnlen(word, sizeof(meta->word) - 1);
+    memcpy(meta->word, word, n);
 }
 
 /* ── nn20db config ──────────────────────────────────────────────────────────── */
@@ -97,7 +103,7 @@ static nn20db_config make_config(const char *db_path, int ef_search) {
                 .search_seen_set_capacity = 20000,
                 .ef_search               = 0, /* set below */
                 .level_config = {
-                    [0] = { .M = 32, .ef_construction = 250 },
+                    [0] = { .M = 32, .ef_construction = 250 }, 
                     [1] = { .M = 16, .ef_construction = 120 },
                     [2] = { .M =  8, .ef_construction =  60 },
                     [3] = { .M =  4, .ef_construction =  30 },
@@ -209,7 +215,11 @@ static int ingest_word2vec(NN20DB *db,
 
         if (wlen == 0) {
             /* skip blank / newline-only entries */
-            fread(vec, sizeof(float), (size_t)dim, f);
+            if (fread(vec, sizeof(float), (size_t)dim, f) != (size_t)dim) {
+                fprintf(stderr, "\nShort read at blank word %ld\n", wi);
+                rc_overall = -1;
+                break;
+            }
             continue;
         }
 
@@ -225,8 +235,7 @@ static int ingest_word2vec(NN20DB *db,
         normalize_l2(vec, (int)dim);
 
         word_meta_t meta;
-        memset(&meta, 0, sizeof(meta));
-        strncpy(meta.word, wordbuf, sizeof(meta.word) - 1);
+        set_word_meta(&meta, wordbuf);
 
         int rc = nn20db_vector_add(db, vec, &meta);
         if (rc != NN20DB_ERROR_OK) {
@@ -272,94 +281,190 @@ static int ingest_word2vec(NN20DB *db,
 
 /* ── self-test: sample query words from the source file, check recall ───────── */
 
-/*
- * Sample SELF_TEST_QUERIES evenly-spaced words from the original .bin file,
- * search the DB for each, and check that the exact word appears in top-K.
- * This avoids any dependence on sequential or predictable nn20db IDs.
- */
-static void run_self_test(NN20DB *db, int ef_search, const char *bin_path, long n_inserted) {
-    printf("\n── Self-test: recall@%d over %d queries from '%s' ──\n",
-           SELF_TEST_K, SELF_TEST_QUERIES, bin_path);
+typedef struct {
+    word_meta_t meta;
+    float vec[WORD2VEC_DIM];
+} self_test_query_t;
+
+static int read_word_label(FILE *f, char *wordbuf, size_t wordbuf_size) {
+    int wlen = 0;
+    int c;
+
+    while ((c = fgetc(f)) != EOF && c != ' ' && c != '\n') {
+        if (wlen < (int)(wordbuf_size - 1)) {
+            wordbuf[wlen++] = (char)c;
+        }
+    }
+    wordbuf[wlen] = '\0';
+
+    return c == EOF ? -1 : wlen;
+}
+
+static int read_word2vec_record(FILE *f, float *vec, long dim, word_meta_t *meta) {
+    char wordbuf[512];
+    int wlen = read_word_label(f, wordbuf, sizeof(wordbuf));
+    if (wlen < 0) {
+        return -1;
+    }
+
+    if (fread(vec, sizeof(float), (size_t)dim, f) != (size_t)dim) {
+        return -1;
+    }
+
+    if (meta != NULL) {
+        set_word_meta(meta, wlen > 0 ? wordbuf : "");
+    }
+
+    return 0;
+}
+
+static int collect_self_test_queries(const char *bin_path,
+                                     long n_inserted,
+                                     int requested_queries,
+                                     self_test_query_t **queries_out,
+                                     int *query_count_out,
+                                     long *source_words_out)
+{
+    *queries_out = NULL;
+    *query_count_out = 0;
+    *source_words_out = 0;
 
     FILE *f = fopen(bin_path, "rb");
     if (!f) {
         fprintf(stderr, "Self-test: cannot open '%s'\n", bin_path);
-        return;
+        return -1;
     }
 
     char header[256];
     if (!fgets(header, sizeof(header), f)) {
         fprintf(stderr, "Self-test: failed to read header\n");
         fclose(f);
-        return;
+        return -1;
     }
+
     long total_words, dim;
     if (sscanf(header, "%ld %ld", &total_words, &dim) != 2 || dim != WORD2VEC_DIM) {
         fprintf(stderr, "Self-test: bad header\n");
         fclose(f);
-        return;
+        return -1;
     }
 
-    /* clamp to the words actually inserted into the graph */
-    if (n_inserted > 0 && n_inserted < total_words)
+    if (n_inserted > 0 && n_inserted < total_words) {
         total_words = n_inserted;
-    if (total_words < SELF_TEST_QUERIES) {
-        printf("  Source file too small for self-test\n");
+    }
+    *source_words_out = total_words;
+
+    int query_count = requested_queries;
+    if (query_count <= 0) {
+        query_count = DEFAULT_SELF_TEST_QUERIES;
+    }
+    if ((long)query_count > total_words) {
+        query_count = (int)total_words;
+    }
+    if (query_count <= 0) {
+        fprintf(stderr, "Self-test: no source vectors available\n");
         fclose(f);
+        return -1;
+    }
+
+    self_test_query_t *queries = calloc((size_t)query_count, sizeof(*queries));
+    if (!queries) {
+        fprintf(stderr, "Self-test: allocation failed\n");
+        fclose(f);
+        return -1;
+    }
+
+    long step = total_words / query_count;
+    if (step < 1) {
+        step = 1;
+    }
+
+    long wi = 0;
+    int collected = 0;
+    for (int qi = 0; qi < query_count; qi++) {
+        long target = qi * step;
+        if (target >= total_words) {
+            target = total_words - 1;
+        }
+
+        while (wi < target) {
+            float scratch[WORD2VEC_DIM];
+            if (read_word2vec_record(f, scratch, dim, NULL) != 0) {
+                goto done;
+            }
+            wi++;
+        }
+
+        if (read_word2vec_record(f, queries[collected].vec, dim,
+                                 &queries[collected].meta) != 0) {
+            goto done;
+        }
+        normalize_l2(queries[collected].vec, (int)dim);
+        wi++;
+        collected++;
+    }
+
+done:
+    fclose(f);
+
+    if (collected == 0) {
+        free(queries);
+        fprintf(stderr, "Self-test: failed to collect query vectors\n");
+        return -1;
+    }
+
+    *queries_out = queries;
+    *query_count_out = collected;
+    return 0;
+}
+
+/*
+ * Sample evenly-spaced words from the original .bin file,
+ * search the DB for each, and check that the exact word appears in top-K.
+ * This avoids any dependence on sequential or predictable nn20db IDs.
+ */
+static void run_self_test(NN20DB *db, int ef_search, const char *bin_path,
+                          long n_inserted, int requested_queries) {
+    printf("\n── Self-test: recall@%d from '%s' ──\n", SELF_TEST_K, bin_path);
+
+    self_test_query_t *queries = NULL;
+    int query_count = 0;
+    long source_words = 0;
+
+    printf("  collecting %d test vectors ...\n",
+           requested_queries > 0 ? requested_queries : DEFAULT_SELF_TEST_QUERIES);
+    double collect_t0 = now_seconds();
+    if (collect_self_test_queries(bin_path, n_inserted, requested_queries,
+                                  &queries, &query_count, &source_words) != 0) {
         return;
     }
+    double collect_ms = (now_seconds() - collect_t0) * 1000.0;
+    printf("  done in %.0f ms (%d vectors, source=%ld)\n",
+           collect_ms, query_count, source_words);
 
     nn20db_vector_search_result *results =
         malloc((size_t)SELF_TEST_K * sizeof(*results));
     word_meta_t *meta_buf = malloc((size_t)SELF_TEST_K * sizeof(*meta_buf));
-    float *vec = malloc(WORD2VEC_DIM * sizeof(float));
 
-    if (!results || !meta_buf || !vec) {
+    if (!results || !meta_buf) {
         fprintf(stderr, "Self-test: allocation failed\n");
-        free(results); free(meta_buf); free(vec);
-        fclose(f);
+        free(results); free(meta_buf); free(queries);
         return;
     }
 
-    long step = total_words / SELF_TEST_QUERIES;
     int hits = 0;
+    int searched = 0;
     double total_search_ms = 0.0;
-    long wi = 0;  /* words consumed from file so far */
 
-    for (int qi = 0; qi < SELF_TEST_QUERIES; qi++) {
-        long target = qi * step;
-
-        /* skip forward to the target word index */
-        while (wi < target) {
-            int c;
-            while ((c = fgetc(f)) != EOF && c != ' ' && c != '\n') {}
-            if (fread(vec, sizeof(float), (size_t)dim, f) != (size_t)dim) goto done;
-            wi++;
-        }
-
-        /* read the target word label */
-        char wordbuf[512];
-        int wlen = 0, c;
-        while ((c = fgetc(f)) != EOF && c != ' ' && c != '\n') {
-            if (wlen < (int)(sizeof(wordbuf) - 1))
-                wordbuf[wlen++] = (char)c;
-        }
-        wordbuf[wlen] = '\0';
-        wi++;
-
-#if 0
-        printf("Query %d/%d: '%s' ... \n", qi + 1, SELF_TEST_QUERIES, wordbuf);
-        fflush(stdout);
-#endif
-
-        if (fread(vec, sizeof(float), (size_t)dim, f) != (size_t)dim) break;
-        normalize_l2(vec, (int)dim);
-
+    printf("  hnsw searches of %d vectors ...\n", query_count);
+    for (int qi = 0; qi < query_count; qi++) {
         double t0 = now_seconds();
-        int rc = nn20db_vector_search_ef(db, vec, SELF_TEST_K, ef_search, results);
+        int rc = nn20db_vector_search_ef(db, queries[qi].vec, SELF_TEST_K,
+                                         ef_search, results);
         total_search_ms += (now_seconds() - t0) * 1000.0;
 
         if (rc != NN20DB_ERROR_OK) continue;
+        searched++;
 
         for (int ri = 0; ri < SELF_TEST_K; ri++) {
             if (nn20db_vector_get(db, results[ri].id, NULL, &meta_buf[ri]) != NN20DB_ERROR_OK)
@@ -367,36 +472,42 @@ static void run_self_test(NN20DB *db, int ef_search, const char *bin_path, long 
         }
 
         for (int ri = 0; ri < SELF_TEST_K; ri++) {
-            if (strncmp(wordbuf, meta_buf[ri].word, 32) == 0) {
+            if (strncmp(queries[qi].meta.word, meta_buf[ri].word, 32) == 0) {
                 hits++;
                 break;
             }
         }
     }
 
-done:;
-    double recall = (double)hits / (double)SELF_TEST_QUERIES;
-    double avg_ms = total_search_ms / (double)SELF_TEST_QUERIES;
-    printf("  recall@%d = %.4f  (%d/%d)  avg_search=%.3f ms  ef_search=%d\n",
-           SELF_TEST_K, recall, hits, SELF_TEST_QUERIES, avg_ms, ef_search);
+    double qps = total_search_ms > 0.0
+        ? ((double)query_count * 1000.0 / total_search_ms)
+        : 0.0;
+    double recall = query_count > 0 ? (double)hits / (double)query_count : 0.0;
+    double avg_ms = query_count > 0 ? total_search_ms / (double)query_count : 0.0;
+
+    printf("  done in %.0f ms\n", total_search_ms);
+    printf("  recall@%d = %.4f (%d/%d)  ef_search=%d\n",
+           SELF_TEST_K, recall, hits, query_count, ef_search);
+    printf("  QPS = %.1f  avg_search=%.3f ms  successful_searches=%d/%d\n",
+           qps, avg_ms, searched, query_count);
 
     free(results);
     free(meta_buf);
-    free(vec);
-    fclose(f);
+    free(queries);
 }
 
 /* ── main ───────────────────────────────────────────────────────────────────── */
 
 static void usage(const char *prog) {
     fprintf(stderr,
-        "Usage: %s <input.bin> <db_path> [--limit N] [--ef-search N]\n"
+        "Usage: %s <input.bin> <db_path> [--limit N] [--ef-search N] [--test N]\n"
         "\n"
         "  input.bin      GoogleNews-vectors-negative300.bin\n"
         "  db_path        Directory for the nn20db HNSW graph (created if new)\n"
         "  --limit N      Only ingest first N words (default: all)\n"
-        "  --ef-search N  ef_search for self-test (default: %d)\n",
-        prog, DEFAULT_EF_SEARCH);
+        "  --ef-search N  ef_search for self-test (default: %d)\n"
+        "  --test N       Number of self-test vectors (default: %d)\n",
+        prog, DEFAULT_EF_SEARCH, DEFAULT_SELF_TEST_QUERIES);
 }
 
 int main(int argc, char *argv[]) {
@@ -407,14 +518,17 @@ int main(int argc, char *argv[]) {
 
     const char *bin_path = argv[1];
     const char *db_path = argv[2];
-    long limit = 0;
+    long limit = 0;  /* max vectors to ingest (for quick testing) */
     int ef_search = DEFAULT_EF_SEARCH;
+    int self_test_queries = DEFAULT_SELF_TEST_QUERIES;
 
     for (int i = 3; i < argc; i++) {
         if (strcmp(argv[i], "--limit") == 0 && i + 1 < argc) {
             limit = atol(argv[++i]);
         } else if (strcmp(argv[i], "--ef-search") == 0 && i + 1 < argc) {
             ef_search = atoi(argv[++i]);
+        } else if (strcmp(argv[i], "--test") == 0 && i + 1 < argc) {
+            self_test_queries = atoi(argv[++i]);
         } else {
             fprintf(stderr, "Unknown argument: %s\n", argv[i]);
             usage(argv[0]);
@@ -442,10 +556,10 @@ int main(int argc, char *argv[]) {
                inserted, now_seconds() - t0);
     } else {
         printf("Opened existing database in %.3f s\n", now_seconds() - t0);
-        inserted = limit > 0 ? limit : -1;  /* for self-test reporting only */
+        inserted = limit > 0 ? limit : 0;  /* 0 means use full source file */
     }
 
-    run_self_test(db, ef_search, bin_path, inserted);
+    run_self_test(db, ef_search, bin_path, inserted, self_test_queries);
 
     nn20db_dtor(db);
     printf("Done.\n");

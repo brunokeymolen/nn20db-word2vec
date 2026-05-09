@@ -18,7 +18,6 @@
 
 #include <stdio.h>
 #include <string.h>
-#include <dirent.h>
 
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
@@ -31,16 +30,12 @@
 #include "nvs_flash.h"
 #include "esp_timer.h"
 
-#include "driver/sdmmc_host.h"
-#include "esp_vfs_fat.h"
-#include "sdmmc_cmd.h"
-
 #include "nn20db.h"
 #include "nn20db_config.h"
-#include "platform/nn20db_esp32_storage.h"
 
 #include "net_server.h"
 #include "display.h"
+#include "sd_storage.h"
 
 static const char *TAG = "main";
 
@@ -56,14 +51,6 @@ static const char *TAG = "main";
 #ifndef CONFIG_WORD2VEC_WIFI_PASSWORD
 #define CONFIG_WORD2VEC_WIFI_PASSWORD "mypassword"
 #endif
-
-/* SD card SDMMC pins — Waveshare ESP32-S3-Touch-LCD-1.47 (from official BSP) */
-#define PIN_SD_CLK      16
-#define PIN_SD_CMD      15
-#define PIN_SD_D0       17
-#define PIN_SD_D1       18
-#define PIN_SD_D2       13
-#define PIN_SD_D3       14
 
 /* nn20db database path (8.3 format, on mounted FAT) */
 #define DB_PATH         "/sdcard/nand0/word2vec"
@@ -213,88 +200,6 @@ static bool wifi_connect(void) {
     }
 }
 
-/* ── SD card storage driver (custom vtable for nn20db) ─────────────────── */
-/*
- * nn20db calls these hooks when it needs to mount/unmount storage.
- * We provide the correct 4-bit SDMMC pins for the Waveshare board so the
- * library never falls back to its built-in defaults (CLK=39/CMD=38/D0=40).
- */
-
-static int my_sd_mount(const char *mount_point, void **out_handle) {
-    ESP_LOGI(TAG, "Mounting SD card at %s ...", mount_point);
-
-    sdmmc_host_t host = SDMMC_HOST_DEFAULT();
-
-    sdmmc_slot_config_t slot_cfg = {};
-    slot_cfg.clk   = PIN_SD_CLK;
-    slot_cfg.cmd   = PIN_SD_CMD;
-    slot_cfg.d0    = PIN_SD_D0;
-    slot_cfg.d1    = PIN_SD_D1;
-    slot_cfg.d2    = PIN_SD_D2;
-    slot_cfg.d3    = PIN_SD_D3;
-    slot_cfg.width = 4;
-    slot_cfg.cd    = SDMMC_SLOT_NO_CD;
-    slot_cfg.wp    = SDMMC_SLOT_NO_WP;
-    slot_cfg.flags |= SDMMC_SLOT_FLAG_INTERNAL_PULLUP;
-
-    esp_vfs_fat_sdmmc_mount_config_t mount_cfg = {
-        .format_if_mount_failed = false,
-        .max_files              = 8,
-        .allocation_unit_size   = 16 * 1024,
-    };
-
-    sdmmc_card_t *card = NULL;
-    esp_err_t err = esp_vfs_fat_sdmmc_mount(mount_point, &host, &slot_cfg,
-                                             &mount_cfg, &card);
-    if (err != ESP_OK) {
-        ESP_LOGE(TAG, "SD mount failed: %s", esp_err_to_name(err));
-        return -1;
-    }
-    ESP_LOGI(TAG, "SD mounted OK (%s, %llu MB)",
-             card->cid.name,
-             (unsigned long long)((uint64_t)card->csd.capacity *
-                                  card->csd.sector_size / (1024 * 1024)));
-    *out_handle = card;
-    return 0;
-}
-
-static void my_sd_unmount(const char *mount_point, void *handle) {
-    esp_vfs_fat_sdcard_unmount(mount_point, (sdmmc_card_t *)handle);
-}
-
-static const nn20db_esp32_storage_driver_t s_sd_driver = {
-    .mount   = my_sd_mount,
-    .unmount = my_sd_unmount,
-};
-
-/* ── SD directory listing ───────────────────────────────────────────────── */
-
-static void sd_list_dir(const char *path, int depth) {
-    DIR *dir = opendir(path);
-    if (!dir) {
-        ESP_LOGW(TAG, "  [cannot open %s]", path);
-        return;
-    }
-    struct dirent *ent;
-    while ((ent = readdir(dir)) != NULL) {
-        char child[512];
-        snprintf(child, sizeof(child), "%s/%s", path, ent->d_name);
-        if (ent->d_type == DT_DIR) {
-            ESP_LOGI(TAG, "%*s[%s/]", depth * 2, "", ent->d_name);
-            sd_list_dir(child, depth + 1);
-        } else {
-            ESP_LOGI(TAG, "%*s%s", depth * 2, "", ent->d_name);
-        }
-    }
-    closedir(dir);
-}
-
-static void sd_log_contents(const char *mount_point) {
-    ESP_LOGI(TAG, "--- SD card contents (%s) ---", mount_point);
-    sd_list_dir(mount_point, 0);
-    ESP_LOGI(TAG, "--- end of SD listing ---");
-}
-
 /* ── app_main ───────────────────────────────────────────────────────────── */
 
 void app_main(void) {
@@ -311,7 +216,7 @@ void app_main(void) {
     display_init();
 
     /* Register custom SD storage driver for nn20db (must be before any nn20db call) */
-    nn20db_esp32_set_storage_driver(&s_sd_driver);
+    sd_storage_register_driver();
 
     /* Wi-Fi */
     ESP_LOGI(TAG, "Connecting to Wi-Fi SSID: %s", CONFIG_WORD2VEC_WIFI_SSID);
@@ -336,7 +241,7 @@ void app_main(void) {
     ESP_LOGI(TAG, "nn20db opened OK");
 
     /* Log SD card contents for diagnostics */
-    sd_log_contents("/sdcard");
+    sd_storage_log_contents("/sdcard");
 
     /* start TCP search server */
     net_server_start(db);

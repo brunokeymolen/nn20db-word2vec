@@ -53,15 +53,28 @@ Higher ef_search for better recall measurement:
     --ef-search 200
 ```
 
+More self-test vectors for steadier timing:
+
+```bash
+./build_word2vec_index \
+    ~/data/GoogleNews-vectors-negative300.bin.gz \
+    ~/data/word2vec_db \
+    --test 10000
+```
+
 ## Self-test output (example)
 
 ```
 Word2Vec file: 3000000 words, 300 dimensions
   done: inserted 3000000 vectors in 3842.1 s
 
-── Self-test: recall@10 over 200 random queries ──
-  DB size ≈ 3000000 vectors
-  recall@10 = 0.9850  (197/200)  avg_search=12.345 ms  ef_search=100
+── Self-test: recall@10 from 'GoogleNews-vectors-negative300.bin' ──
+  collecting 10000 test vectors ...
+  done in 5000 ms (10000 vectors, source=3000000)
+  hnsw searches of 10000 vectors ...
+  done in 2000 ms
+  recall@10 = 0.9850 (9850/10000)  ef_search=100
+  QPS = 5000.0  avg_search=0.200 ms  successful_searches=10000/10000
 Done.
 ```
 
