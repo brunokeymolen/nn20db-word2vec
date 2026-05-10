@@ -71,12 +71,21 @@ word2vec> king - man + woman
     1  queen                             0.310421
    ...
 
+word2vec> king - man + woman ; 25
+  Query vector built from: king, -man, woman
+  ef_search override: 25
+  ...
+
 word2vec> quit
 ```
+
+Add `; N` after an expression to override `ef_search` for that query only. If
+the suffix is omitted, the CLI falls back to `--ef`.
 
 ## Wire protocol (ESP32 mode)
 
 ```
-Linux → ESP32:  300 × float32 little-endian  =  1200 bytes
+Linux → ESP32:  uint16 k + uint16 ef_search + 300 × float32 little-endian
+               =  1204 bytes
 ESP32 → Linux:  k  × (32-byte word + 4-byte float32)  =  k × 36 bytes
 ```

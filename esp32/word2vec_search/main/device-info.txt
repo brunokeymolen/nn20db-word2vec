@@ -1,4 +1,7 @@
 
+https://www.waveshare.com/wiki/ESP32-S3-Touch-LCD-1.47
+https://files.waveshare.com/wiki/common/Esp32-s3_technical_reference_manual_en.pdf
+
 LCD SCK/MOSI/CS/DC/RST/BL	38,39,21,45,40,46
 Touch SDA/SCL/INT/RST	    42,41,47,48
 SD driver	                native SDMMC

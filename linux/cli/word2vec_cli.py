@@ -26,6 +26,7 @@ Examples:
 Interactive expressions:
     word2vec> king
     word2vec> king - man + woman
+    word2vec> king - man + woman ; 25
     word2vec> quit
 """
 
@@ -69,7 +70,8 @@ except ImportError:
 
 DIM = 300
 METADATA_SIZE = 32          # sizeof(word_meta_t): char word[32]
-WIRE_QUERY_BYTES  = DIM * 4            # 1200 bytes: 300 × float32 LE
+WIRE_QUERY_HEADER_BYTES = 4            # uint16 k + uint16 ef_search
+WIRE_QUERY_BYTES  = WIRE_QUERY_HEADER_BYTES + (DIM * 4)
 WIRE_RESULT_BYTES = METADATA_SIZE + 4  # 36 bytes: 32-byte word + 4-byte float32
 
 
@@ -188,6 +190,37 @@ def parse_expression(
     return normalize(result), used
 
 
+def parse_query_input(line: str, default_ef: int) -> Tuple[str, int]:
+    """
+    Parse an interactive query line.
+
+    Supported forms:
+        king - man + woman
+        king - man + woman ; 25
+    """
+    expr, sep, ef_text = line.partition(";")
+    expr = expr.strip()
+    if not expr:
+        raise ValueError("Empty expression")
+
+    if not sep:
+        return expr, default_ef
+
+    ef_text = ef_text.strip()
+    if not ef_text:
+        raise ValueError("Missing ef_search after ';'")
+
+    try:
+        ef = int(ef_text)
+    except ValueError as exc:
+        raise ValueError(f"Invalid ef_search: '{ef_text}'") from exc
+
+    if ef <= 0:
+        raise ValueError("ef_search must be > 0")
+
+    return expr, ef
+
+
 # ── local nn20db search ──────────────────────────────────────────────────────
 
 def local_search(
@@ -214,15 +247,16 @@ def esp32_search(
     port: int,
     query_vec: np.ndarray,
     k: int,
+    ef: int,
 ) -> List[Tuple[str, float]]:
     """
     Send query vector to ESP32 TCP server and receive top-k results.
 
     Wire protocol:
-        TX: 300 × float32 LE  (1200 bytes)
+        TX: uint16 k + uint16 ef_search + 300 × float32 LE  (1204 bytes)
         RX: k × (32-byte word + 4-byte float32)  (k × 36 bytes)
     """
-    payload = query_vec.astype(np.float32).tobytes()
+    payload = struct.pack("<HH", k, ef) + query_vec.astype(np.float32).tobytes()
     assert len(payload) == WIRE_QUERY_BYTES
 
     with socket.create_connection((host, port), timeout=60.0) as s:
@@ -267,6 +301,7 @@ def repl(
     print("Word2Vec REPL  (type 'quit' to exit)")
     print("  Examples:  king")
     print("             king - man + woman")
+    print("             king - man + woman ; 25")
     print()
 
     while True:
@@ -282,18 +317,21 @@ def repl(
             break
 
         try:
-            query_vec, used_tokens = parse_expression(line, word_vecs)
+            expr, effective_ef = parse_query_input(line, ef)
+            query_vec, used_tokens = parse_expression(expr, word_vecs)
         except ValueError as e:
             print(f"  Error: {e}")
             continue
 
         print(f"  Query vector built from: {', '.join(used_tokens)}")
+        if effective_ef != ef:
+            print(f"  ef_search override: {effective_ef}")
 
         # local search
         if db is not None:
             try:
                 t0 = time.perf_counter()
-                results = local_search(db, query_vec, k=k, ef=ef)
+                results = local_search(db, query_vec, k=k, ef=effective_ef)
                 elapsed_ms = (time.perf_counter() - t0) * 1000
                 print(f"  Local search  ({elapsed_ms:.1f} ms)")
                 print_results(results, "Linux nn20db")
@@ -305,7 +343,7 @@ def repl(
             host, port = esp32_addr
             try:
                 t0 = time.perf_counter()
-                results = esp32_search(host, port, query_vec, k=k)
+                results = esp32_search(host, port, query_vec, k=k, ef=effective_ef)
                 elapsed_ms = (time.perf_counter() - t0) * 1000
                 print(f"  ESP32 search  ({elapsed_ms:.1f} ms)")
                 print_results(results, f"ESP32 {host}:{port}")
@@ -334,6 +372,11 @@ def main():
     parser.add_argument("--ef", type=int, default=100,
                         help="ef_search for local nn20db query (default: 100)")
     args = parser.parse_args()
+
+    if args.k <= 0:
+        parser.error("--k must be > 0")
+    if args.ef <= 0:
+        parser.error("--ef must be > 0")
 
     # parse ESP32 address
     esp32_addr = None

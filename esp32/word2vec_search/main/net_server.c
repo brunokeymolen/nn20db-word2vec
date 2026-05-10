@@ -3,8 +3,8 @@
  *
  * Listens on NET_SERVER_PORT (9900).
  * For each connection:
- *   1. Receive 1200 bytes (300 × float32 LE query vector).
- *   2. Run nn20db_vector_search_ef with NET_SERVER_EF.
+ *   1. Receive uint16 k + uint16 ef_search + 300 × float32 LE.
+ *   2. Run nn20db_vector_search_ef with the requested k and ef_search.
  *   3. Fetch word_meta_t for each result.
  *   4. Send k × 36 bytes (32-byte word label + 4-byte float32 distance).
  *   5. Close connection.
@@ -35,11 +35,19 @@ typedef struct {
 } word_meta_t;
 
 typedef struct {
+    uint16_t k;
+    uint16_t ef_search;
+    float    query[NET_SERVER_DIM];
+} request_wire_t;
+
+typedef struct {
     char  word[32];
     float distance;
 } result_wire_t;
 #pragma pack(pop)
 
+_Static_assert(sizeof(request_wire_t) == (4 + (NET_SERVER_DIM * 4)),
+               "request_wire_t size");
 _Static_assert(sizeof(word_meta_t)   == 32, "word_meta_t size");
 _Static_assert(sizeof(result_wire_t) == 36, "result_wire_t size");
 
@@ -68,36 +76,54 @@ static int send_all(int sock, const void *buf, size_t len) {
 /* ── per-connection handler ──────────────────────────────────────────────── */
 
 static void handle_connection(int conn_fd, NN20DB *db) {
-    float query[NET_SERVER_DIM];
-    nn20db_vector_search_result results[NET_SERVER_TOP_K];
-    result_wire_t wire[NET_SERVER_TOP_K];
-    memset(wire, 0, sizeof(wire));
+    request_wire_t request;
+    nn20db_vector_search_result results[NET_SERVER_MAX_TOP_K];
+    result_wire_t wire[NET_SERVER_MAX_TOP_K];
+    char words[NET_SERVER_MAX_TOP_K][32];
+    int requested_k;
+    int effective_k;
+    int ef_search;
 
-    /* receive query vector */
-    if (recv_all(conn_fd, query, sizeof(query)) != 0) {
+    memset(wire, 0, sizeof(wire));
+    memset(words, 0, sizeof(words));
+
+    /* receive request header and query vector */
+    if (recv_all(conn_fd, &request, sizeof(request)) != 0) {
         ESP_LOGW(TAG, "recv failed: %d", errno);
         return;
+    }
+
+    requested_k = (int)request.k;
+    ef_search = (int)request.ef_search;
+
+    if (requested_k <= 0) {
+        requested_k = NET_SERVER_DEFAULT_TOP_K;
+    }
+    effective_k = requested_k;
+    if (effective_k > NET_SERVER_MAX_TOP_K) {
+        ESP_LOGW(TAG, "clamping k from %d to %d", requested_k, NET_SERVER_MAX_TOP_K);
+        effective_k = NET_SERVER_MAX_TOP_K;
+    }
+    if (ef_search <= 0) {
+        ef_search = NET_SERVER_DEFAULT_EF;
     }
 
     int64_t t0 = esp_timer_get_time();
     display_show_searching();
 
-    int rc = nn20db_vector_search_ef(db, query, NET_SERVER_TOP_K,
-                                     NET_SERVER_EF, results);
+    int rc = nn20db_vector_search_ef(db, request.query, effective_k,
+                                     ef_search, results);
     int64_t search_us = esp_timer_get_time() - t0;
 
     if (rc != NN20DB_ERROR_OK) {
         ESP_LOGW(TAG, "search failed rc=%d", rc);
         /* send empty response so the client gets something */
-        send_all(conn_fd, wire, sizeof(wire));
+        send_all(conn_fd, wire, (size_t)effective_k * sizeof(*wire));
         return;
     }
 
     /* collect metadata for each result */
-    char words[NET_SERVER_TOP_K][32];
-    memset(words, 0, sizeof(words));
-
-    for (int i = 0; i < NET_SERVER_TOP_K; i++) {
+    for (int i = 0; i < effective_k; i++) {
         word_meta_t meta;
         memset(&meta, 0, sizeof(meta));
         if (nn20db_vector_get(db, results[i].id, NULL, &meta) == NN20DB_ERROR_OK) {
@@ -108,13 +134,14 @@ static void handle_connection(int conn_fd, NN20DB *db) {
     }
 
     /* display results */
-    display_show_results(words, NET_SERVER_TOP_K, (float)(search_us / 1000.0));
+    display_show_results(words, effective_k, (float)(search_us / 1000.0));
 
-    ESP_LOGI(TAG, "search OK: top1='%.32s' d=%.4f  t=%lldus",
-             wire[0].word, (double)wire[0].distance, (long long)search_us);
+    ESP_LOGI(TAG, "search OK: k=%d ef=%d top1='%.32s' d=%.4f  t=%lldus",
+             effective_k, ef_search, wire[0].word,
+             (double)wire[0].distance, (long long)search_us);
 
     /* send response */
-    send_all(conn_fd, wire, sizeof(wire));
+    send_all(conn_fd, wire, (size_t)effective_k * sizeof(*wire));
 }
 
 /* ── server task ─────────────────────────────────────────────────────────── */

@@ -147,8 +147,50 @@ mounted FAT volume. Path components must be ≤ 8.3 characters.
 
 ## 6. Build and flash ESP32-S3
 
-* install espressif sdk or use the container in the project. An easy way it using visual studio code and do: 'F1' -> Open Container
+### ESP-IDF setup
 
+Install the Espressif SDK locally, or use the development container included in this project.
+
+The recommended and easiest setup is to use Visual Studio Code with Dev Containers:
+
+1. Connect the ESP device to your computer first, so the serial port is available inside the container.
+2. Open the project in Visual Studio Code.
+3. Press `F1`.
+4. Select `Dev Containers: Reopen in Container`.
+
+After the container has started, the ESP-IDF environment should be available and the connected device should be visible from inside the container.
+
+```bash
+root@5d05d157e0bc:/workspaces/nn20db-embedded-word2vect/esp32/word2vec_search# get_idf 
+Checking "python3" ...
+Python 3.12.3
+"python3" has been detected
+Activating ESP-IDF 5.5
+Setting IDF_PATH to '/opt/esp/idf'.
+* Checking python version ... 3.12.3
+* Checking python dependencies ... OK
+* Deactivating the current ESP-IDF environment (if any) ... OK
+* Establishing a new ESP-IDF environment ... OK
+* Identifying shell ... bash
+* Detecting outdated tools in system ... OK - no outdated tools found
+* Shell completion ... Autocompletion code generated
+
+Done! You can now compile ESP-IDF projects.
+```
+
+Set your Wi-Fi credentials first, create the file `esp32/word2vec_search/sdkconfig.defaults.local`
+
+
+```bash
+root@5d05d157e0bc:/workspaces/nn20db-embedded-word2vect# cat esp32/word2vec_search/sdkconfig.defaults.local
+```
+```conf
+# Local Wi-Fi credentials — NOT committed to git (see .gitignore)
+CONFIG_WORD2VEC_WIFI_SSID="<your access point ssid>"
+CONFIG_WORD2VEC_WIFI_PASSWORD="<your password>"
+```
+
+#### Build, Flash and Monitor
 ```bash
 cd esp32/word2vec_search
 idf.py set-target esp32s3
@@ -156,8 +198,7 @@ make build
 make flash-monitor
 ```
 
-Set your Wi-Fi credentials first (via `idf.py menuconfig` →
-`Word2Vec Search Configuration` or by editing `sdkconfig.defaults`).
+
 
 ## Vector encoding
 
@@ -170,9 +211,12 @@ Both Linux and ESP32 use `METRIC_EUCLIDEAN_F32_CONFIG`.
 ## Wire protocol
 
 ```
-Linux → ESP32:   300 × float32 little-endian  (1200 bytes)
+Linux → ESP32:   uint16 k + uint16 ef_search + 300 × float32 little-endian  (1204 bytes)
 ESP32 → Linux:   k × (32-byte word-label + 4-byte float32 distance)  (k×36 bytes)
 ```
+
+In the CLI REPL, append `; N` to override `ef_search` for one query, for
+example `king + woman ; 25`. Without the suffix, the CLI default stays in use.
 
 ## HNSW parameters
 

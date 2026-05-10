@@ -183,9 +183,13 @@ STEP 8 — Search from Linux CLI via ESP32 (phase 1 demo)
 WIRE PROTOCOL (port 9900)
 --------------------------------------------------------------------------------
 
-  Request  : 300 × float32 little-endian  =  1200 bytes
+  Request  : uint16 k + uint16 ef_search + 300 × float32 little-endian
+           =  1204 bytes
   Response : k × (32-byte word + 4-byte float32 distance LE)  =  k × 36 bytes
   k default: 10
+
+  REPL syntax: append '; N' to override ef_search for one query, for example:
+    king + woman ; 25
 
 --------------------------------------------------------------------------------
 HNSW PARAMETERS

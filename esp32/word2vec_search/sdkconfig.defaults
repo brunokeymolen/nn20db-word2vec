@@ -39,6 +39,11 @@ CONFIG_ESP_CONSOLE_USB_CDC=y
 CONFIG_ESP_CONSOLE_SECONDARY_NONE=y
 
 # -----------------------------------------------------------------------------
+# Bluetooth — keep fully disabled to minimise power draw during Wi-Fi tests
+# -----------------------------------------------------------------------------
+# CONFIG_BT_ENABLED is not set
+
+# -----------------------------------------------------------------------------
 # Partition table — custom CSV to give the app partition enough room
 # -----------------------------------------------------------------------------
 CONFIG_PARTITION_TABLE_CUSTOM=y

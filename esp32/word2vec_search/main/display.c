@@ -41,6 +41,7 @@
 #include "driver/spi_master.h"
 #include "driver/i2c.h"
 #include "driver/gpio.h"
+#include "driver/ledc.h"
 
 #include "esp_lcd_panel_io.h"
 #include "esp_lcd_panel_vendor.h"
@@ -66,6 +67,15 @@ static const char *TAG = "display";
 #define PIN_LCD_DC       45
 #define PIN_LCD_RST      40
 #define PIN_LCD_BL       46
+
+#define LCD_BL_LEDC_MODE       LEDC_LOW_SPEED_MODE
+#define LCD_BL_LEDC_TIMER      LEDC_TIMER_0
+#define LCD_BL_LEDC_CHANNEL    LEDC_CHANNEL_0
+#define LCD_BL_LEDC_FREQ_HZ    5000
+#define LCD_BL_LEDC_RESOLUTION LEDC_TIMER_8_BIT
+#define LCD_BL_DUTY_OFF         0
+#define LCD_BL_DUTY_25_PERCENT  64
+#define LCD_BL_DUTY_100_PERCENT 255
 
 #define PIN_TOUCH_SDA    42
 #define PIN_TOUCH_SCL    41
@@ -256,13 +266,26 @@ static void build_results_screen(void) {
 void display_init(void) {
     ESP_LOGI(TAG, "Initialising display (JD9853, 320x172 landscape)");
 
-    /* backlight */
-    gpio_config_t bl_cfg = {
-        .pin_bit_mask = (1ULL << PIN_LCD_BL),
-        .mode = GPIO_MODE_OUTPUT,
+    /* backlight: keep the panel dim during bring-up to reduce load */
+    ledc_timer_config_t bl_timer_cfg = {
+        .speed_mode      = LCD_BL_LEDC_MODE,
+        .duty_resolution = LCD_BL_LEDC_RESOLUTION,
+        .timer_num       = LCD_BL_LEDC_TIMER,
+        .freq_hz         = LCD_BL_LEDC_FREQ_HZ,
+        .clk_cfg         = LEDC_AUTO_CLK,
     };
-    gpio_config(&bl_cfg);
-    gpio_set_level(PIN_LCD_BL, 0); /* off during init */
+    ESP_ERROR_CHECK(ledc_timer_config(&bl_timer_cfg));
+
+    ledc_channel_config_t bl_channel_cfg = {
+        .gpio_num   = PIN_LCD_BL,
+        .speed_mode = LCD_BL_LEDC_MODE,
+        .channel    = LCD_BL_LEDC_CHANNEL,
+        .intr_type  = LEDC_INTR_DISABLE,
+        .timer_sel  = LCD_BL_LEDC_TIMER,
+        .duty       = LCD_BL_DUTY_OFF,
+        .hpoint     = 0,
+    };
+    ESP_ERROR_CHECK(ledc_channel_config(&bl_channel_cfg));
 
     /* SPI bus */
     spi_bus_config_t buscfg = {
@@ -357,9 +380,20 @@ void display_init(void) {
 
     /* LVGL handler task */
     xTaskCreate(lvgl_task, "lvgl", 8 * 1024, NULL, tskIDLE_PRIORITY + 3, NULL);
-    gpio_set_level(PIN_LCD_BL, 1);
+    display_set_backlight_percent(25);
 
     ESP_LOGI(TAG, "Display init complete");
+}
+
+void display_set_backlight_percent(uint8_t percent) {
+    if (percent > 100) {
+        percent = 100;
+    }
+
+    uint32_t duty = ((uint32_t)LCD_BL_DUTY_100_PERCENT * percent) / 100;
+    ESP_LOGI(TAG, "LCD backlight %u%% (duty=%lu)", percent, (unsigned long)duty);
+    ESP_ERROR_CHECK(ledc_set_duty(LCD_BL_LEDC_MODE, LCD_BL_LEDC_CHANNEL, duty));
+    ESP_ERROR_CHECK(ledc_update_duty(LCD_BL_LEDC_MODE, LCD_BL_LEDC_CHANNEL));
 }
 
 void display_set_ip(const char *ip) {

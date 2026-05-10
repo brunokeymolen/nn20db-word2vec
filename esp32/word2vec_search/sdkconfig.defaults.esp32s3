@@ -25,6 +25,14 @@ CONFIG_FATFS_ALLOC_PREFER_EXTRAM=y
 CONFIG_ESP_WIFI_ENABLED=y
 CONFIG_ESP_WIFI_STATIC_RX_BUFFER_NUM=10
 CONFIG_ESP_WIFI_DYNAMIC_RX_BUFFER_NUM=32
+# Keep RF awake during initial disconnected STA association attempts.
+# This is diagnostic for reset/power-cycle failures with reason 8.
+# CONFIG_ESP_WIFI_STA_DISCONNECTED_PM_ENABLE is not set
+
+# Diagnostic: force full RF calibration on every boot. If reset-only Wi-Fi
+# failures disappear, stale/partial calibration data is implicated.
+CONFIG_ESP_PHY_RF_CAL_FULL=y
+# CONFIG_ESP_PHY_RF_CAL_PARTIAL is not set
 
 # -----------------------------------------------------------------------------
 # Flash — 16 MB (Waveshare ESP32-S3-Touch-LCD-1.47)

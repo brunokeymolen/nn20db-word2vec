@@ -12,4 +12,12 @@ menu "Word2Vec Search Configuration"
         help
             Password for the Wi-Fi network.
 
+    config WORD2VEC_LOG_SD_CONTENTS
+        bool "Log full SD card contents after database open"
+        default y
+        help
+            Enable verbose SD card directory logging after a successful boot.
+            This is useful when verifying which database directories and files
+            are visible on the mounted SD card.
+
 endmenu

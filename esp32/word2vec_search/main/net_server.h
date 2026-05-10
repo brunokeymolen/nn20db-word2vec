@@ -7,18 +7,21 @@ extern "C" {
 #endif
 
 /*
- * Wire protocol (phase 1):
+ * Wire protocol:
  *
- *   Request  (Linux → ESP32):  300 × float32 LE  =  1200 bytes
+ *   Request  (Linux → ESP32):  uint16 k + uint16 ef_search
+ *                              + 300 × float32 LE
+ *                              = 1204 bytes
  *   Response (ESP32 → Linux):  k × (32-byte word + 4-byte float32)
- *                              =  k × 36 bytes  (k = NET_SERVER_TOP_K)
+ *                              = k × 36 bytes
  *
  * The server listens on NET_SERVER_PORT and handles one connection at a time.
  */
-#define NET_SERVER_PORT    9900
-#define NET_SERVER_DIM     300
-#define NET_SERVER_TOP_K   10
-#define NET_SERVER_EF      32    /* ef_search on the device */
+#define NET_SERVER_PORT           9900
+#define NET_SERVER_DIM            300
+#define NET_SERVER_DEFAULT_TOP_K  10
+#define NET_SERVER_MAX_TOP_K      32
+#define NET_SERVER_DEFAULT_EF     32
 
 /* Start the TCP server task. db must remain valid for the lifetime of the task. */
 void net_server_start(NN20DB *db);

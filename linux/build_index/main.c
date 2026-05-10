@@ -103,7 +103,7 @@ static nn20db_config make_config(const char *db_path, int ef_search) {
                 .search_seen_set_capacity = 20000,
                 .ef_search               = 0, /* set below */
                 .level_config = {
-                    [0] = { .M = 32, .ef_construction = 250 }, 
+                    [0] = { .M = 32, .ef_construction = 400 }, //250
                     [1] = { .M = 16, .ef_construction = 120 },
                     [2] = { .M =  8, .ef_construction =  60 },
                     [3] = { .M =  4, .ef_construction =  30 },
