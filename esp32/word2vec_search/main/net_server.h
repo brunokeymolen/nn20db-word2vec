@@ -21,7 +21,7 @@ extern "C" {
 #define NET_SERVER_DIM            300
 #define NET_SERVER_DEFAULT_TOP_K  10
 #define NET_SERVER_MAX_TOP_K      32
-#define NET_SERVER_DEFAULT_EF     32
+#define NET_SERVER_DEFAULT_EF     15
 
 /* Start the TCP server task. db must remain valid for the lifetime of the task. */
 void net_server_start(NN20DB *db);

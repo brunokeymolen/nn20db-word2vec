@@ -134,7 +134,7 @@ static void handle_connection(int conn_fd, NN20DB *db) {
     }
 
     /* display results */
-    display_show_results(words, effective_k, (float)(search_us / 1000.0));
+    display_show_results(words, effective_k, ef_search, (float)(search_us / 1000.0));
 
     ESP_LOGI(TAG, "search OK: k=%d ef=%d top1='%.32s' d=%.4f  t=%lldus",
              effective_k, ef_search, wire[0].word,

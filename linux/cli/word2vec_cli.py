@@ -8,18 +8,21 @@ server over TCP.
 
 Usage:
     python word2vec_cli.py \\
-        --db <path-to-nn20db-dir> \\
         --word-vectors <GoogleNews-vectors-negative300.bin.gz> \\
         [--limit N] \\
         [--esp32 host:port] \\
+        [--local-search --db <path-to-nn20db-dir>] \
         [--k 10] \\
-        [--ef 100]
+        [--ef 15]
 
 Examples:
-    python word2vec_cli.py --db ~/data/word2vec_db \\
+    python word2vec_cli.py --local-search --db ~/data/word2vec_db \
         --word-vectors ~/data/GoogleNews-vectors-negative300.bin.gz
 
-    python word2vec_cli.py --db ~/data/word2vec_db \\
+    python word2vec_cli.py --word-vectors ~/data/GoogleNews-vectors-negative300.bin.gz \
+        --esp32 192.168.1.42:9900 --k 10 --ef 15
+
+    python word2vec_cli.py --local-search --db ~/data/word2vec_db \
         --word-vectors ~/data/GoogleNews-vectors-negative300.bin.gz \\
         --esp32 192.168.1.42:9900 --k 10 --ef 32
 
@@ -73,6 +76,11 @@ METADATA_SIZE = 32          # sizeof(word_meta_t): char word[32]
 WIRE_QUERY_HEADER_BYTES = 4            # uint16 k + uint16 ef_search
 WIRE_QUERY_BYTES  = WIRE_QUERY_HEADER_BYTES + (DIM * 4)
 WIRE_RESULT_BYTES = METADATA_SIZE + 4  # 36 bytes: 32-byte word + 4-byte float32
+ESP32_SEARCH_TIMEOUT_SEC = 120.0
+DEFAULT_EF_SEARCH = 15
+ESP32_ORANGE_ANSI = "\033[38;2;244;162;97m"
+ESP32_YELLOW_ANSI = "\033[38;2;255;215;0m"
+ANSI_RESET = "\033[0m"
 
 
 # ── vector helpers ───────────────────────────────────────────────────────────
@@ -259,7 +267,8 @@ def esp32_search(
     payload = struct.pack("<HH", k, ef) + query_vec.astype(np.float32).tobytes()
     assert len(payload) == WIRE_QUERY_BYTES
 
-    with socket.create_connection((host, port), timeout=60.0) as s:
+    with socket.create_connection((host, port), timeout=ESP32_SEARCH_TIMEOUT_SEC) as s:
+        s.settimeout(ESP32_SEARCH_TIMEOUT_SEC)
         s.sendall(payload)
 
         response_size = k * WIRE_RESULT_BYTES
@@ -286,6 +295,12 @@ def print_results(results: List[Tuple[str, float]], source: str) -> None:
     print(f"  [{source}]")
     for rank, (word, dist) in enumerate(results, 1):
         print(f"  {rank:3d}  {word:<32s}  {dist:.6f}")
+
+
+def colorize(text: str, ansi_color: str) -> str:
+    if sys.stdout.isatty():
+        return f"{ansi_color}{text}{ANSI_RESET}"
+    return text
 
 
 # ── REPL ─────────────────────────────────────────────────────────────────────
@@ -342,10 +357,11 @@ def repl(
         if esp32_addr is not None:
             host, port = esp32_addr
             try:
+                print(f"  {colorize('ESP32 Search...', ESP32_ORANGE_ANSI)}")
                 t0 = time.perf_counter()
                 results = esp32_search(host, port, query_vec, k=k, ef=effective_ef)
                 elapsed_ms = (time.perf_counter() - t0) * 1000
-                print(f"  ESP32 search  ({elapsed_ms:.1f} ms)")
+                print(f"  {colorize(f'ESP32 search (ef {effective_ef}, {elapsed_ms:.1f} ms)', ESP32_YELLOW_ANSI)}")
                 print_results(results, f"ESP32 {host}:{port}")
             except Exception as exc:
                 print(f"  ESP32 search error: {exc}")
@@ -359,7 +375,7 @@ def main():
     parser = argparse.ArgumentParser(
         description="Word2Vec interactive search CLI (nn20db backend)",
     )
-    parser.add_argument("--db", required=True,
+    parser.add_argument("--db",
                         help="Path to the nn20db HNSW database directory")
     parser.add_argument("--word-vectors", required=True, metavar="FILE",
                         help="GoogleNews-vectors-negative300.bin.gz path")
@@ -367,16 +383,20 @@ def main():
                         help="Load only first N word vectors into RAM (default: all)")
     parser.add_argument("--esp32", metavar="HOST:PORT",
                         help="Optional: also send queries to ESP32 TCP server")
+    parser.add_argument("--local-search", "--local", action="store_true",
+                        help="Enable local nn20db search (disabled by default)")
     parser.add_argument("--k", type=int, default=10,
                         help="Number of nearest neighbours to return (default: 10)")
-    parser.add_argument("--ef", type=int, default=100,
-                        help="ef_search for local nn20db query (default: 100)")
+    parser.add_argument("--ef", type=int, default=DEFAULT_EF_SEARCH,
+                        help="ef_search to send with each query (default: 15)")
     args = parser.parse_args()
 
     if args.k <= 0:
         parser.error("--k must be > 0")
     if args.ef <= 0:
         parser.error("--ef must be > 0")
+    if args.local_search and not args.db:
+        parser.error("--db is required when --local-search is enabled")
 
     # parse ESP32 address
     esp32_addr = None
@@ -389,9 +409,9 @@ def main():
     # load word vectors into RAM
     word_vecs = load_word_vectors(args.word_vectors, limit=args.limit)
 
-    # open nn20db (local search)
+    # open nn20db (local search, opt-in)
     db = None
-    if _HAVE_NN20DB:
+    if args.local_search and _HAVE_NN20DB:
         print(f"Opening nn20db at '{args.db}' ...")
         try:
             cfg = DatabaseConfig(
@@ -421,13 +441,13 @@ def main():
         except Exception as e:
             print(f"  Warning: could not open nn20db: {e}")
             print("  Local search will be unavailable.")
-    else:
+    elif args.local_search:
         print("Warning: nn20db Python API not found. "
               "Local search unavailable.")
-        if esp32_addr is None:
-            print("No search backend available. "
-                  "Provide --esp32 or install the nn20db Python API.")
-            sys.exit(1)
+
+    if db is None and esp32_addr is None:
+        print("No search backend available. Provide --esp32 or enable --local-search.")
+        sys.exit(1)
 
     try:
         repl(db, word_vecs, esp32_addr, k=args.k, ef=args.ef)

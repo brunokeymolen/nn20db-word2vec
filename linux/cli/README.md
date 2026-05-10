@@ -2,8 +2,8 @@
 
 Interactive nearest-neighbour search using the nn20db HNSW index built by
 `linux/build_index/`. Supports plain word queries, vector arithmetic
-expressions, local search (via Python nn20db API) and remote search on an
-ESP32-S3 (via TCP).
+expressions, optional local search (via Python nn20db API) and remote search
+on an ESP32-S3 (via TCP).
 
 ## Prerequisites
 
@@ -16,24 +16,25 @@ ESP32-S3 (via TCP).
 
 ```bash
 python word2vec_cli.py \
-    --db ~/data/word2vec_db \
     --word-vectors ~/data/GoogleNews-vectors-negative300.bin.gz \
     [--limit N] \
     [--esp32 HOST:PORT] \
+  [--local-search --db ~/data/word2vec_db] \
     [--k 10] \
-    [--ef 100]
+  [--ef 15]
 ```
 
 ## Options
 
 | Flag             | Default | Description                                             |
 |------------------|---------|---------------------------------------------------------|
-| `--db`           | —       | Path to the nn20db database directory (required)        |
+| `--db`           | —       | Path to the nn20db database directory (`--local-search`) |
 | `--word-vectors` | —       | Path to `GoogleNews-vectors-negative300.bin.gz` (req.)  |
 | `--limit N`      | all     | Load only the first N word vectors into RAM             |
 | `--esp32 H:P`    | —       | Also search on ESP32-S3 TCP server at HOST:PORT         |
+| `--local-search` | off     | Enable local Linux nn20db search                        |
 | `--k N`          | 10      | Number of nearest neighbours to return                  |
-| `--ef N`         | 100     | ef_search for local nn20db query                        |
+| `--ef N`         | 15      | ef_search sent with each query unless overridden        |
 
 ## Session example
 
@@ -52,20 +53,17 @@ Word2Vec REPL  (type 'quit' to exit)
 
 word2vec> king
   Query vector built from: king
-  Local search  (8.2 ms)
-  [Linux nn20db]
+  ESP32 Search...
+  ESP32 search  (42.3 ms)
+  [ESP32 192.168.1.42:9900]
     1  king                              0.000000
     2  kings                             0.285412
     3  queen                             0.391836
-   ...
+  ...
 
 word2vec> king - man + woman
   Query vector built from: king, -man, woman
-  Local search  (9.1 ms)
-  [Linux nn20db]
-    1  queen                             0.310421
-    2  princess                          0.381203
-   ...
+  ESP32 Search...
   ESP32 search  (42.3 ms)
   [ESP32 192.168.1.42:9900]
     1  queen                             0.310421
@@ -74,9 +72,37 @@ word2vec> king - man + woman
 word2vec> king - man + woman ; 25
   Query vector built from: king, -man, woman
   ef_search override: 25
+  ESP32 Search...
   ...
 
 word2vec> quit
+```
+
+Enable local Linux search explicitly if you want it as well:
+
+```bash
+python word2vec_cli.py \
+    --local-search \
+    --db ~/data/word2vec_db \
+    --word-vectors ~/data/GoogleNews-vectors-negative300.bin.gz \
+    --esp32 192.168.1.42:9900
+```
+
+Then each query can run both local and remote search.
+
+```text
+word2vec> king - man + woman
+  Query vector built from: king, -man, woman
+  Local search  (9.1 ms)
+  [Linux nn20db]
+    1  queen                             0.310421
+    2  princess                          0.381203
+  ...
+  ESP32 Search...
+  ESP32 search  (42.3 ms)
+  [ESP32 192.168.1.42:9900]
+    1  queen                             0.310421
+  ...
 ```
 
 Add `; N` after an expression to override `ef_search` for that query only. If

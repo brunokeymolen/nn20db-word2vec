@@ -546,6 +546,7 @@ void app_main(void) {
     if (rc != NN20DB_ERROR_OK || db == NULL) {
         ESP_LOGE(TAG, "Failed to open DB (rc=%d)", rc);
         /* display error and halt */
+        display_show_idle();
         display_set_ip("DB open failed!");
         while (1) vTaskDelay(pdMS_TO_TICKS(1000));
     }
@@ -561,6 +562,7 @@ void app_main(void) {
     /* start TCP search server */
     net_server_start(db);
     ESP_LOGI(TAG, "TCP server started on port %d", NET_SERVER_PORT);
+    display_show_idle();
 
     /* idle — the server task drives further activity */
     ESP_LOGI(TAG, "Ready. Waiting for queries on %s:%d",
