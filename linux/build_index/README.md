@@ -10,7 +10,7 @@ is executed.
 ## Prerequisites
 
 - nn20db Linux SDK installed at `sdk/linux/current/` (see top-level README)
-- zlib development headers: `sudo apt install zlib1g-dev`
+
 
 ## Build
 
@@ -31,7 +31,7 @@ Full vocabulary (~3M words, needs ~4 GB RAM and a large SD card):
 
 ```bash
 ./build_word2vec_index \
-    ~/data/GoogleNews-vectors-negative300.bin.gz \
+    ~/data/GoogleNews-vectors-negative300.bin \
     ~/data/word2vec_db
 ```
 
@@ -39,7 +39,7 @@ Reduced vocabulary for development (200k words, ~250 MB):
 
 ```bash
 ./build_word2vec_index \
-    ~/data/GoogleNews-vectors-negative300.bin.gz \
+    ~/data/GoogleNews-vectors-negative300.bin \
     ~/data/word2vec_db_200k \
     --limit 200000
 ```
@@ -48,7 +48,7 @@ Higher ef_search for better recall measurement:
 
 ```bash
 ./build_word2vec_index \
-    ~/data/GoogleNews-vectors-negative300.bin.gz \
+    ~/data/GoogleNews-vectors-negative300.bin \
     ~/data/word2vec_db \
     --ef-search 200
 ```
@@ -57,7 +57,7 @@ More self-test vectors for steadier timing:
 
 ```bash
 ./build_word2vec_index \
-    ~/data/GoogleNews-vectors-negative300.bin.gz \
+    ~/data/GoogleNews-vectors-negative300.bin \
     ~/data/word2vec_db \
     --test 10000
 ```

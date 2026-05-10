@@ -1,3 +1,25 @@
+/*
+ * nn20db-word2vec
+ *
+ * Copyright (c) 2026 Bruno Keymolen
+ * Contact: bruno.keymolen@gmail.com
+ *
+ * License:
+ * This Demo, including all pre-compiled binaries and accompanying files,
+ * is provided for private and educational use only.
+ *
+ * Commercial use is strictly prohibited without prior written agreement
+ * from the author.
+ *
+ * Disclaimer:
+ * This software is provided "as is", without any express or implied
+ * warranties, including but not limited to the implied warranties of
+ * merchantability and fitness for a particular purpose.
+ *
+ * In no event shall the author be held liable for any damages arising
+ * from the use of this software.
+ */
+
 /* Enable POSIX clock_gettime / CLOCK_MONOTONIC */
 #define _POSIX_C_SOURCE 200809L
 
@@ -103,7 +125,7 @@ static nn20db_config make_config(const char *db_path, int ef_search) {
                 .search_seen_set_capacity = 20000,
                 .ef_search               = 0, /* set below */
                 .level_config = {
-                    [0] = { .M = 32, .ef_construction = 400 }, //250
+                    [0] = { .M = 32, .ef_construction = 250 }, 
                     [1] = { .M = 16, .ef_construction = 120 },
                     [2] = { .M =  8, .ef_construction =  60 },
                     [3] = { .M =  4, .ef_construction =  30 },

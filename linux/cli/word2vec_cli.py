@@ -1,4 +1,24 @@
 #!/usr/bin/env python3
+# nn20db-word2vec
+#
+# Copyright (c) 2026 Bruno Keymolen
+# Contact: bruno.keymolen@gmail.com
+#
+# License:
+# This Demo, including all pre-compiled binaries and accompanying files,
+# is provided for private and educational use only.
+#
+# Commercial use is strictly prohibited without prior written agreement
+# from the author.
+#
+# Disclaimer:
+# This software is provided "as is", without any express or implied
+# warranties, including but not limited to the implied warranties of
+# merchantability and fitness for a particular purpose.
+#
+# In no event shall the author be held liable for any damages arising
+# from the use of this software.
+
 """
 nn20db-embedded-word2vect CLI
 
@@ -46,7 +66,7 @@ from typing import Dict, List, Optional, Tuple
 import numpy as np
 
 # ── nn20db Python API ────────────────────────────────────────────────────────
-# The Python API lives in the nn20db-sdk repo; we try both the installed
+# The Python API lives in the nn20db-word2vec repo; we try both the installed
 # location and a sibling repo path.
 def _find_nn20db_py() -> Optional[Path]:
     candidates = [

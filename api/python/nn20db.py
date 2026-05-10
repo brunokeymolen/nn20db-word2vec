@@ -1,10 +1,10 @@
-# nn20db-sdk
+# nn20db-word2vec
 #
 # Copyright (c) 2026 Bruno Keymolen
 # Contact: bruno.keymolen@gmail.com
 #
 # License:
-# This SDK, including all pre-compiled binaries and accompanying files,
+# This Demo, including all pre-compiled binaries and accompanying files,
 # is provided for private and educational use only.
 #
 # Commercial use is strictly prohibited without prior written agreement
