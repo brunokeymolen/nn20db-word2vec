@@ -3,6 +3,10 @@
 Word2Vec nearest-neighbour search demo using [nn20db](https://github.com/brunokeymolen/nn20db-sdk)
 HNSW on Linux + ESP32-S3 (Waveshare ESP32-S3-Touch-LCD-1.47).
 
+## Demo Video
+
+[![Watch the demo on YouTube](https://img.youtube.com/vi/uMlM1yzEbDw/hqdefault.jpg)](https://www.youtube.com/watch?v=uMlM1yzEbDw)
+
 ## Overview
 
 ```
