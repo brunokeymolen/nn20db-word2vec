@@ -1,4 +1,4 @@
-# nn20db-embedded-word2vect
+# nn20db-word2vec
 
 Word2Vec nearest-neighbour search demo using [nn20db](https://github.com/brunokeymolen/nn20db-sdk)
 HNSW on Linux + ESP32-S3 (Waveshare ESP32-S3-Touch-LCD-1.47).
@@ -10,7 +10,7 @@ HNSW on Linux + ESP32-S3 (Waveshare ESP32-S3-Touch-LCD-1.47).
 ## Overview
 
 ```
-GoogleNews-vectors-negative300.bin.gz
+GoogleNews-vectors-negative300.bin
         │
         ▼  linux/build_index/
   nn20db HNSW graph  ──── copy to SD card ────▶  ESP32-S3
@@ -20,9 +20,9 @@ GoogleNews-vectors-negative300.bin.gz
   (local search or proxy)
 ```
 
-**Phase 1 design principle:** all word-to-vector lookup and vector arithmetic is
+**Design principle/scope of demo:** all word-to-vector lookup and vector arithmetic is
 done on Linux. Linux sends a single 300-dimensional float32 query vector to
-the ESP32-S3 over the network. The ESP32-S3 is search-only in phase 1.
+the ESP32-S3 over the network. The ESP32-S3 is search-only.
 
 ## Hardware
 
@@ -37,9 +37,9 @@ the ESP32-S3 over the network. The ESP32-S3 is search-only in phase 1.
 ## Repository Layout
 
 ```
-nn20db-embedded-word2vect/
+nn20db-word2vec/
 ├── linux/
-│   ├── build_index/   C tool: parse GoogleNews .bin.gz, build nn20db graph
+│   ├── build_index/   C tool: parse GoogleNews .bin, build nn20db graph
 │   └── cli/           Python REPL: word/expression queries, local + ESP32 search
 ├── esp32/
 │   └── word2vec_search/  ESP32-S3 IDF app: SD search + TCP server + LVGL UI
@@ -49,7 +49,6 @@ nn20db-embedded-word2vect/
 ## Prerequisites
 
 - Linux x86-64 with GCC, cmake, make
-- zlib development headers (`apt install zlib1g-dev`)
 - Python 3.9+ with `numpy` and optionally `gensim`
 - ESP-IDF v5.x (for ESP32 build)
 - nn20db SDK release 1.1.0
@@ -90,7 +89,7 @@ wget https://huggingface.co/NathaNn1111/word2vec-google-news-negative-300-bin/re
 cd linux/build_index
 make
 ./build_word2vec_index \
-    ~/data/GoogleNews-vectors-negative300.bin.gz \
+    ~/data/GoogleNews-vectors-negative300.bin \
     ~/data/word2vec_db
 ```
 
@@ -98,7 +97,7 @@ Optional: build a smaller index for development (`--limit 200000`):
 
 ```bash
 ./build_word2vec_index \
-    ~/data/GoogleNews-vectors-negative300.bin.gz \
+    ~/data/GoogleNews-vectors-negative300.bin \
     ~/data/word2vec_db_200k \
     --limit 200000
 ```
@@ -109,7 +108,7 @@ Optional: build a smaller index for development (`--limit 200000`):
 cd linux/cli
 python word2vec_cli.py \
     --db ~/data/word2vec_db \
-    --word-vectors ~/data/GoogleNews-vectors-negative300.bin.gz \
+    --word-vectors ~/data/GoogleNews-vectors-negative300.bin \
     --limit 200000
 ```
 
@@ -135,7 +134,7 @@ With ESP32 remote search:
 ```bash
 python word2vec_cli.py \
     --db ~/data/word2vec_db \
-    --word-vectors ~/data/GoogleNews-vectors-negative300.bin.gz \
+    --word-vectors ~/data/GoogleNews-vectors-negative300.bin \
     --esp32 192.168.1.42:9900
 ```
 
