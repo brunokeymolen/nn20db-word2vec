@@ -226,6 +226,6 @@ example `king + woman ; 25`. Without the suffix, the CLI default stays in use.
 | Parameter          | Value | Notes                                    |
 |--------------------|-------|------------------------------------------|
 | M (level 0)        | 32    | Dense graph; good for 300-D vectors      |
-| ef_construction    | 400   | High-quality build                       |
+| ef_construction    | 250   | High-quality build                       |
 | ef_search (Linux)  | 100   | Default CLI; tune with `--ef`            |
 | ef_search (ESP32)  | 32    | Faster on device; still good recall      |
