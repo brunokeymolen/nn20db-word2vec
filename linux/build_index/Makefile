@@ -5,7 +5,7 @@ SRCS     = main.c
 
 # SDK paths
 # Override: make SDK_ROOT=/custom/path
-REPO_ROOT  := $(abspath ../../..)
+REPO_ROOT  := $(abspath $(dir $(lastword $(MAKEFILE_LIST)))/../..)
 SDK_ROOT   ?= $(REPO_ROOT)/sdk/linux/current
 PKG_CONFIG_PATH := $(SDK_ROOT)/linux/x86_64-linux-gnu/pkgconfig:$(PKG_CONFIG_PATH)
 export PKG_CONFIG_PATH

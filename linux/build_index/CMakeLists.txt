@@ -4,7 +4,7 @@ project(build_word2vec_index C)
 set(CMAKE_C_STANDARD 11)
 
 # ── SDK paths ─────────────────────────────────────────────────────────────────
-set(REPO_ROOT "${CMAKE_CURRENT_SOURCE_DIR}/../../..")
+set(REPO_ROOT "${CMAKE_CURRENT_SOURCE_DIR}/../..")
 set(nn20db_DIR "${REPO_ROOT}/sdk/linux/current/cmake"
     CACHE PATH "Path to nn20dbConfig.cmake")
 

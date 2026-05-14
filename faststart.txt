@@ -61,21 +61,45 @@ STEP 3 — Build the HNSW index from GoogleNews vectors
         --limit 200000
 
   Options:
-    --limit N     only index the first N words (default: all)
-    --m N         HNSW M parameter, default 32
-    --ef N        ef_construction, default 400
-    --test N      run self-test with N random queries after build, default 100
+    --limit N      only index the first N words (default: all)
+    --ef-search N  ef_search used for the self-test (default: 100)
+    --test N       run self-test with N query vectors after build (default: 10000)
 
   The program will print recall@10 at the end. Aim for recall > 0.90.
 
   The database directory can be on any local filesystem (ext4, etc.).
   For SD card use 8.3 filenames: copy it as /sdcard/nand0/word2vec/
 
+  Example
+  -------
+
+  bruno@bruno-desktop ~/projects/nn20db-word2vec/linux/build_index ⎇ main $ ./build_word2vec_index /home/bruno/datasets/GoogleNews-vectors-negative300.bin /tmp/vectordb/w2v20k.300 --limit 20000 --ef-search 100 --test 500 
+  Opening/creating nn20db at '/tmp/vectordb/w2v20k.300' ...
+  New database created. Ingesting vectors from '/home/bruno/datasets/GoogleNews-vectors-negative300.bin' ...
+  Word2Vec file: 3000000 words, 300 dimensions
+  Limiting ingest to 20000 words
+    done: inserted 20000 vectors in 41.5 s
+  Ingested 20000 vectors in 41.7 s
+
+  ── Self-test: recall@10 from '/home/bruno/datasets/GoogleNews-vectors-negative300.bin' ──
+    collecting 500 test vectors ...
+    done in 11 ms (500 vectors, source=20000)
+    hnsw searches of 500 vectors ...
+    done in 687 ms
+    recall@10 = 1.0000 (500/500)  ef_search=100
+    QPS = 727.9  avg_search=1.374 ms  successful_searches=500/500
+  Done.
+  
+
 --------------------------------------------------------------------------------
 STEP 4 — Test with the Linux CLI
 --------------------------------------------------------------------------------
 
+  
+
   Requires: nn20db Linux SDK installed (step 1), Python 3
+            python bindings : make -C api/python/ 
+
 
     cd linux/cli
 
@@ -84,6 +108,8 @@ STEP 4 — Test with the Linux CLI
         --db /path/to/output_db \
         --word-vectors /path/to/GoogleNews-vectors-negative300.bin.gz \
         --limit 200000
+        --local-search 
+
 
   At the prompt:
     > king                     # search for a word
@@ -92,9 +118,22 @@ STEP 4 — Test with the Linux CLI
 
   Type 'quit' or Ctrl-D to exit.
 
-  One-shot from command line:
-    python word2vec_cli.py --db /path/to/db --word-vectors ... \
-        --query "king - man + woman" --top-k 5
+
+  Example
+  -------
+  (ai) bruno@bruno-desktop ~/projects/nn20db-word2vec/linux/cli ⎇ main $ python word2vec_cli.py --db /tmp/vectordb/w2v20k.300 --word-vectors /home/bruno/datasets/GoogleNews-vectors-negative300.bin --limit 20000 --local-search
+  Loading word vectors from /home/bruno/datasets/GoogleNews-vectors-negative300.bin ...
+    File: 3000000 words, dim=300. Loading 20000.
+  Loaded 20000 words in 0.2 s
+  Opening nn20db at '/tmp/vectordb/w2v20k.300' ...
+    nn20db opened OK
+
+  Word2Vec REPL  (type 'quit' to exit)
+    Examples:  king
+              king - man + woman
+              king - man + woman ; 25
+
+  word2vec> 
 
 --------------------------------------------------------------------------------
 STEP 5 — Copy database to SD card
@@ -113,32 +152,40 @@ STEP 5 — Copy database to SD card
 STEP 6 — Build and flash the ESP32-S3 firmware (using Docker)
 --------------------------------------------------------------------------------
 
-  No host IDF installation required — the container handles everything.
+  The easiest way is to use 'Visual Studio Code' and the Extention 'Dev Containers' from Microsoft.
 
+  Pres 'F1' -> Dev Containers : Reopen In Container
+
+  (plug in the ESP before switching to the container, this to keep the serial interface available)
+
+  - once done you have a full ESP IDF environment to build and flash.
+    (set the wifi credentials, see STEP 7)
+
+    
     cd esp32/word2vec_search
+    
+    #Initiate the ESP IDF environment
+    get_idf
 
-    # Build the Docker image (first time only, ~2 GB download)
-    make docker-image
+    # Clean
+    make clean
 
-    # Set ESP32-S3 target and compile
-    make docker-build
+    # Set ESP32-S3 target 
+    make set-target-s3
+    
+    # Compile
+    make build
 
     # Flash to board (default port: /dev/ttyACM0)
-    make docker-flash
+    make flash
 
-    # Or flash and open serial monitor in one step
-    make docker-flash-monitor
+    # Monitor
+    make monitor
 
     # Override serial port
-    make docker-flash-monitor PORT=/dev/ttyUSB0
+    make flash-monitor PORT=/dev/ttyUSB0
 
-  The container mounts the project root read-write, so build artefacts appear
-  in esp32/word2vec_search/build/ on your host.
-
-  If you have ESP-IDF sourced on the host you can also use native targets:
-    make set-target-s3
-    make build
-    make flash-monitor
+  
 
 --------------------------------------------------------------------------------
 STEP 7 — Configure Wi-Fi credentials
@@ -146,22 +193,14 @@ STEP 7 — Configure Wi-Fi credentials
 
   Before the first flash, set your Wi-Fi SSID and password:
 
-    cd esp32/word2vec_search
+  cd esp32/word2vec_search
 
-    # With host IDF:
-    idf.py menuconfig
-      → "Word2Vec Search Configuration" → WiFi SSID / WiFi Password
 
-    # Or inside the container:
-    docker run --rm -it \
-      -v $(pwd)/../..:/workspace \
-      -w /workspace/esp32/word2vec_search \
-      nn20db-esp32-idf \
-      idf.py menuconfig
+  edit/create : sdkconfig.defaults.local
 
-  Alternatively edit sdkconfig directly:
-    CONFIG_WORD2VEC_WIFI_SSID="YourSSID"
-    CONFIG_WORD2VEC_WIFI_PASS="YourPassword"
+  # Local Wi-Fi credentials — NOT committed to git (see .gitignore)
+  CONFIG_WORD2VEC_WIFI_SSID="<your access point ssid>"
+  CONFIG_WORD2VEC_WIFI_PASSWORD="<your password>"
 
 --------------------------------------------------------------------------------
 STEP 8 — Search from Linux CLI via ESP32 (phase 1 demo)

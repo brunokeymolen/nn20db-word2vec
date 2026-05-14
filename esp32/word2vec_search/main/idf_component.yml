@@ -1,0 +1,5 @@
+dependencies:
+  idf: ">=5.5"
+  espressif/esp_lvgl_port: "^2.7.2"
+  lvgl/lvgl:
+    version: "^8"

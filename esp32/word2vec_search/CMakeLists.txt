@@ -4,6 +4,15 @@ if(NOT DEFINED IDF_TARGET)
     set(IDF_TARGET "esp32s3")
 endif()
 
+set(SDKCONFIG_DEFAULTS
+    "sdkconfig.defaults"
+    "sdkconfig.defaults.${IDF_TARGET}"
+)
+
+if(EXISTS "${CMAKE_CURRENT_LIST_DIR}/sdkconfig.defaults.local")
+    list(APPEND SDKCONFIG_DEFAULTS "sdkconfig.defaults.local")
+endif()
+
 get_filename_component(REPO_ROOT "${CMAKE_CURRENT_LIST_DIR}/../.." ABSOLUTE)
 set(NN20DB_COMPONENT_DIR "${REPO_ROOT}/sdk/esp32/current/esp32/component/nn20db")
 

@@ -17,6 +17,12 @@ Waveshare ESP32-S3-Touch-LCD-1.47:
 - ESP-IDF v5.x installed and sourced (`idf.py` on `$PATH`)
 - nn20db ESP32-S3 SDK installed (see top-level README)
 - The nn20db Word2Vec database built on Linux and copied to SD card
+- Internet access on first configure/build so ESP-IDF can fetch managed
+    components (`espressif/esp_lvgl_port` and `lvgl/lvgl`)
+
+This project uses ESP-IDF managed components. In `main/CMakeLists.txt`, the
+component names must match the managed names exposed to CMake:
+`lvgl__lvgl` and `espressif__esp_lvgl_port`.
 
 ## Build the database (Linux first!)
 

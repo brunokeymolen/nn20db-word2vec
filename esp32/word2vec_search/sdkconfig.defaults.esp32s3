@@ -38,7 +38,6 @@ CONFIG_ESP_PHY_RF_CAL_FULL=y
 # Flash — 16 MB (Waveshare ESP32-S3-Touch-LCD-1.47)
 # -----------------------------------------------------------------------------
 CONFIG_ESPTOOLPY_FLASHSIZE_16MB=y
-CONFIG_PARTITION_TABLE_CUSTOM=n
 
 # -----------------------------------------------------------------------------
 # LVGL — configure stack and buffer sizes for 172×320 display
