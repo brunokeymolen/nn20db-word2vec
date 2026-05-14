@@ -218,6 +218,11 @@ STEP 8 — Search from Linux CLI via ESP32 (phase 1 demo)
   is sent over TCP to the ESP32 (port 9900) which performs the HNSW search and
   returns top-k results.
 
+  Example
+  -------
+  bruno@bruno-desktop ~/projects/nn20db-word2vec/linux/cli ⎇ main $ python3 word2vec_cli.py --db /tmp/vectordb/w2v3m --word-vectors /home/bruno/datasets/GoogleNews-vectors-negative300.bin --esp32 192.168.0.201:9900
+
+
 --------------------------------------------------------------------------------
 WIRE PROTOCOL (port 9900)
 --------------------------------------------------------------------------------
