@@ -45,13 +45,25 @@
 #include <time.h>
 
 #include "nn20db.h"
-#include "nn20db_config.h"
+
+
+#ifndef USE_PQ
+#define USE_PQ 1
+#endif
+
+#if USE_PQ
+    #include "config_pq.h"
+#else
+    #include "config_fp32.h"
+#endif
+
 
 /* ── constants ─────────────────────────────────────────────────────────────── */
 
 #define WORD2VEC_DIM        300
 #define METADATA_SIZE       32      /* sizeof(word_meta_t) */
 #define DEFAULT_EF_SEARCH   100
+#define PQ_TRAIN_SAMPLES    50000   /* vectors used for PQ codebook training */
 #define DEFAULT_SELF_TEST_QUERIES 10000   /* queries used for recall self-test */
 #define SELF_TEST_K         10
 #define COMPACT_INTERVAL    10000   /* compact + sync every N insertions */
@@ -87,60 +99,7 @@ static void set_word_meta(word_meta_t *meta, const char *word) {
     memcpy(meta->word, word, n);
 }
 
-/* ── nn20db config ──────────────────────────────────────────────────────────── */
 
-static nn20db_config make_config(const char *db_path, int ef_search) {
-    nn20db_config cfg = {
-        .vector = {
-            .type          = NN20DB_DIMENSION_FLOAT32_CONFIG,
-            .dimension     = WORD2VEC_DIM,
-            .metadata_size = METADATA_SIZE,
-        },
-        .storage = {
-            .type = NN20DB_STORAGE_LFS_CONFIG,
-            .lfs = {
-                .lane_cache_size_kb      = 8192,
-                .lane_size_mb            = 256,
-                .log_size_mb             = 500,
-                .log_index_buckets       = 262144,
-                .object_cache_size_bytes = 4096,
-                .read_ahead_size_bytes   = 4096,
-                .block_size              = 4096,
-                .flags                   = NN20DB_STORAGE_FLAGS_DISABLE_CRC,
-          },
-            .cache = {
-                .enabled     = 1,
-                .max_entries = 1048576 * 3,
-            },
-        },
-        .metric = {
-            .type = METRIC_EUCLIDEAN_F32_CONFIG,
-        },
-        .index = {
-            .type = NN20DB_INDEX_HNSW_CONFIG,
-            .hnsw = {
-                .search_threads          = 1,
-                .max_levels              = 5,
-                .diversity_alpha         = 1.2f,
-                .search_seen_set_capacity = 20000,
-                .ef_search               = 0, /* set below */
-                .level_config = {
-                    [0] = { .M = 32, .ef_construction = 250 }, 
-                    [1] = { .M = 16, .ef_construction = 120 },
-                    [2] = { .M =  8, .ef_construction =  60 },
-                    [3] = { .M =  4, .ef_construction =  30 },
-                    [4] = { .M =  2, .ef_construction =  15 },
-                },
-            },
-        },
-    };
-
-    snprintf(cfg.storage.lfs.device_path,
-             sizeof(cfg.storage.lfs.device_path), "%s", db_path);
-    cfg.index.hnsw.ef_search = (uint16_t)ef_search;
-
-    return cfg;
-}
 
 /* ── open or create DB ──────────────────────────────────────────────────────── */
 
@@ -299,6 +258,90 @@ static int ingest_word2vec(NN20DB *db,
     fclose(f);
     *inserted_out = inserted;
     return rc_overall;
+}
+
+/* ── PQ training ────────────────────────────────────────────────────────────── */
+
+static int read_word2vec_record(FILE *f, float *vec, long dim, word_meta_t *meta);
+
+/*
+ * Train the PQ codebooks on a uniform random sample of the source file
+ * (normalized the same way as at insert time), drawn via reservoir sampling
+ * so the codebooks reflect the whole vocabulary rather than just its first
+ * (typically most-frequent) words.  Must run before the first
+ * nn20db_vector_add() on a freshly created PQ database.
+ */
+static int train_pq_from_file(NN20DB *db, const char *bin_path, long limit) {
+    FILE *f = fopen(bin_path, "rb");
+    if (!f) {
+        fprintf(stderr, "PQ train: cannot open '%s'\n", bin_path);
+        return -1;
+    }
+
+    char header[256];
+    long total_words, dim;
+    if (!fgets(header, sizeof(header), f) ||
+        sscanf(header, "%ld %ld", &total_words, &dim) != 2 ||
+        dim != WORD2VEC_DIM) {
+        fprintf(stderr, "PQ train: bad header\n");
+        fclose(f);
+        return -1;
+    }
+
+    long population = total_words;
+    if (limit > 0 && population > limit) population = limit;
+
+    long n = PQ_TRAIN_SAMPLES;
+    if (n > population) n = population;
+
+    float *samples = malloc((size_t)n * WORD2VEC_DIM * sizeof(float));
+    if (!samples) {
+        fprintf(stderr, "PQ train: allocation failed\n");
+        fclose(f);
+        return -1;
+    }
+
+    printf("PQ training: reservoir-sampling %ld of %ld vectors ...\n", n, population);
+    srand(42); /* fixed seed for reproducible testing */
+
+    float vec[WORD2VEC_DIM];
+    long collected = 0;
+    long seen = 0;
+    while (seen < population) {
+        if (read_word2vec_record(f, vec, dim, NULL) != 0) {
+            break;
+        }
+        normalize_l2(vec, WORD2VEC_DIM);
+
+        if (seen < n) {
+            memcpy(samples + seen * WORD2VEC_DIM, vec, sizeof(vec));
+        } else {
+            long j = rand() % (seen + 1);
+            if (j < n) {
+                memcpy(samples + j * WORD2VEC_DIM, vec, sizeof(vec));
+            }
+        }
+        seen++;
+        collected = (seen < n) ? seen : n;
+    }
+    fclose(f);
+
+    if (collected < 256) {
+        fprintf(stderr, "PQ train: only %ld samples collected\n", collected);
+        free(samples);
+        return -1;
+    }
+
+    printf("PQ training: k-means on %ld vectors ...\n", collected);
+    double t0 = now_seconds();
+    int rc = nn20db_pq_train(db, samples, (unsigned int)collected);
+    free(samples);
+    if (rc != NN20DB_ERROR_OK) {
+        fprintf(stderr, "PQ train failed (rc=%d)\n", rc);
+        return -1;
+    }
+    printf("PQ training: done in %.1f s\n", now_seconds() - t0);
+    return 0;
 }
 
 /* ── self-test: sample query words from the source file, check recall ───────── */
@@ -558,6 +601,7 @@ int main(int argc, char *argv[]) {
         }
     }
 
+    
     nn20db_config cfg = make_config(db_path, ef_search);
     int created = 0;
 
@@ -568,6 +612,13 @@ int main(int argc, char *argv[]) {
 
     long inserted = 0;
     if (created) {
+        if (cfg.metric.type == METRIC_EUCLIDEAN_PQ_CONFIG &&
+            nn20db_pq_is_trained(db) != 1) {
+            if (train_pq_from_file(db, bin_path, limit) != 0) {
+                nn20db_dtor(db);
+                return 1;
+            }
+        }
         printf("New database created. Ingesting vectors from '%s' ...\n", bin_path);
         if (ingest_word2vec(db, bin_path, limit, &inserted) != 0) {
             fprintf(stderr, "Ingest failed\n");

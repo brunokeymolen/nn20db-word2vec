@@ -434,10 +434,16 @@ def main():
     if args.local_search and _HAVE_NN20DB:
         print(f"Opening nn20db at '{args.db}' ...")
         try:
+            # A PQ-built database carries its codebooks in NN20DB.PQC.
+            # The stored vector config wins on open, but the metric comes
+            # from the caller, so it must match how the DB was built.
+            is_pq = (Path(args.db) / "NN20DB.PQC").exists()
+            if is_pq:
+                print("  PQ database detected (NN20DB.PQC)")
             cfg = DatabaseConfig(
                 dimension=DIM,
                 metadata_size=METADATA_SIZE,
-                metric="euclidean_f32",
+                metric="euclidean_pq" if is_pq else "euclidean_f32",
                 storage=LfsStorageConfig(
                     device_path=args.db,
                     lane_cache_size_kb=1024,

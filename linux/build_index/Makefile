@@ -3,6 +3,11 @@ CFLAGS  ?= -O3 -std=c11 -Wall -Wextra
 TARGET   = build_word2vec_index
 SRCS     = main.c
 
+# Product quantization config toggle
+# Override: make USE_PQ=0
+USE_PQ  ?= 1
+CFLAGS  += -DUSE_PQ=$(USE_PQ)
+
 # SDK paths
 # Override: make SDK_ROOT=/custom/path
 REPO_ROOT  := $(abspath $(dir $(lastword $(MAKEFILE_LIST)))/../..)

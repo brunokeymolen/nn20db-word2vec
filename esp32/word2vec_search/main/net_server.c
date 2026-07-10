@@ -139,7 +139,12 @@ static void handle_connection(int conn_fd, NN20DB *db) {
 
     if (rc != NN20DB_ERROR_OK) {
         ESP_LOGW(TAG, "search failed rc=%d", rc);
-        /* send empty response so the client gets something */
+        /* No serial access in deployment: surface the rc on the LCD and in
+           the word field of the wire response so the CLI prints it. */
+        snprintf(wire[0].word, sizeof(wire[0].word), "!ERR search rc=%d", rc);
+        wire[0].distance = (float)rc;
+        memcpy(words[0], wire[0].word, sizeof(words[0]));
+        display_show_results(words, 1, ef_search, (float)(search_us / 1000.0));
         send_all(conn_fd, wire, (size_t)effective_k * sizeof(*wire));
         return;
     }
@@ -148,8 +153,11 @@ static void handle_connection(int conn_fd, NN20DB *db) {
     for (int i = 0; i < effective_k; i++) {
         word_meta_t meta;
         memset(&meta, 0, sizeof(meta));
-        if (nn20db_vector_get(db, results[i].id, NULL, &meta) == NN20DB_ERROR_OK) {
+        int get_rc = nn20db_vector_get(db, results[i].id, NULL, &meta);
+        if (get_rc == NN20DB_ERROR_OK) {
             memcpy(wire[i].word, meta.word, 32);
+        } else {
+            snprintf(wire[i].word, sizeof(wire[i].word), "!ERR get rc=%d", get_rc);
         }
         wire[i].distance = results[i].distance;
         memcpy(words[i], wire[i].word, 32);

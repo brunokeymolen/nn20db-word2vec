@@ -80,39 +80,18 @@ static const char *TAG = "main";
 
 /* nn20db database path (8.3 format, on mounted FAT) */
 //#define DB_PATH         "/sdcard/nand0/word2vec"
-#define DB_PATH         "/sdcard/nand0/w2v3m"
 
-/* ── nn20db config ──────────────────────────────────────────────────────── */
+#ifndef USE_PQ
+#define USE_PQ 1
+#endif
 
-static const nn20db_config s_nn20db_config = {
-    .vector = {
-        .type          = NN20DB_DIMENSION_FLOAT32_CONFIG,
-        .dimension     = NET_SERVER_DIM,
-        .metadata_size = 32,
-    },
-    .storage = {
-        .type = NN20DB_STORAGE_LFS_CONFIG,
-        .lfs = {
-            .device_path             = DB_PATH,
-            .mount_point             = "/sdcard",
-            .lane_cache_size_kb      = 16,
-            .lane_size_mb            = 512,
-            .log_size_mb             = 4,
-            .log_index_buckets       = 1024,
-            .object_cache_size_bytes = 4096,
-            .read_ahead_size_bytes   = 2048,
-            .block_size              = 4096,
-            .flags                   = NN20DB_STORAGE_FLAGS_DISABLE_CRC,
-        },
-        .cache = {
-            .enabled     = 1,
-            .max_entries = 16,  /* 16 × 4096 = 64 KB — safe for S3 PSRAM */
-        },
-    },
-    .metric = {
-        .type = METRIC_EUCLIDEAN_F32_CONFIG,
-    },
-};
+#if USE_PQ
+    #include "config_pq.h"
+#else
+    #include "config_fp32.h"
+#endif
+
+
 
 /* ── Wi-Fi ──────────────────────────────────────────────────────────────── */
 
@@ -519,6 +498,28 @@ static bool wifi_connect(void) {
     }
 }
 
+/* Extract the basename of `path` and clamp it to 8.3 (FAT short name) format. */
+static void db_name_8_3(const char *path, char *out, size_t out_size) {
+    const char *slash = strrchr(path, '/');
+    const char *base = slash ? slash + 1 : path;
+
+    const char *dot = strrchr(base, '.');
+    size_t name_len = dot ? (size_t)(dot - base) : strlen(base);
+    if (name_len > 8) name_len = 8;
+
+    size_t ext_len = 0;
+    if (dot) {
+        ext_len = strlen(dot + 1);
+        if (ext_len > 3) ext_len = 3;
+    }
+
+    if (ext_len > 0) {
+        snprintf(out, out_size, "%.*s.%.*s", (int)name_len, base, (int)ext_len, dot + 1);
+    } else {
+        snprintf(out, out_size, "%.*s", (int)name_len, base);
+    }
+}
+
 /* ── app_main ───────────────────────────────────────────────────────────── */
 
 void app_main(void) {
@@ -546,6 +547,10 @@ void app_main(void) {
     diag_note_phase(BOOT_PHASE_DISPLAY_INIT);
     display_init();
     display_set_backlight_percent(LCD_BOOT_BACKLIGHT_PERCENT);
+
+    char db_name[13];  /* 8 + '.' + 3 + NUL */
+    db_name_8_3(DB_PATH, db_name, sizeof(db_name));
+    display_set_db_name(db_name);
 
     ESP_LOGI(TAG, "Connecting to Wi-Fi SSID: %s", CONFIG_WORD2VEC_WIFI_SSID);
     bool wifi_ok = wifi_connect();

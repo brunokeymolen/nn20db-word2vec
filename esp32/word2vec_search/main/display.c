@@ -122,6 +122,7 @@ static lv_obj_t *s_scr_results;
 /* Idle screen widgets */
 static lv_obj_t *s_lbl_title;      /* "nn20db" */
 static lv_obj_t *s_lbl_subtitle;   /* "word2vec" */
+static lv_obj_t *s_lbl_db_name_idle;  /* database basename, next to "word2vec" */
 static lv_obj_t *s_lbl_ip;
 static lv_obj_t *s_lbl_waiting;
 
@@ -135,6 +136,7 @@ static lv_obj_t *s_lbl_searching;
 /* Results screen widgets */
 static lv_obj_t *s_list_results;
 static lv_obj_t *s_lbl_result_title;
+static lv_obj_t *s_lbl_db_name_results;  /* database basename, next to "Results" */
 static lv_obj_t *s_lbl_result_meta;
 static lv_timer_t *s_results_scroll_timer;
 static uint8_t s_results_scroll_pause_ticks;
@@ -302,6 +304,13 @@ static void build_idle_screen(void) {
     lv_obj_set_style_text_color(s_lbl_subtitle, lv_color_hex(0x8BC5FF), 0);
     lv_obj_set_style_text_font(s_lbl_subtitle, &lv_font_montserrat_24, 0);
     lv_obj_align(s_lbl_subtitle, LV_ALIGN_TOP_LEFT, 72, 38);
+
+    /* database name, right after "word2vec" */
+    s_lbl_db_name_idle = lv_label_create(card);
+    lv_label_set_text(s_lbl_db_name_idle, "");
+    lv_obj_set_style_text_color(s_lbl_db_name_idle, lv_color_hex(0x8BC5FF), 0);
+    lv_obj_set_style_text_font(s_lbl_db_name_idle, &lv_font_montserrat_20, 0);
+    lv_obj_align_to(s_lbl_db_name_idle, s_lbl_subtitle, LV_ALIGN_OUT_RIGHT_MID, 6, 0);
 
     /* IP address */
     s_lbl_ip = lv_label_create(card);
@@ -477,6 +486,13 @@ static void build_results_screen(void) {
     lv_obj_set_style_text_color(s_lbl_result_title, lv_color_hex(0xF0F6FC), 0);
     lv_obj_set_style_text_font(s_lbl_result_title, &lv_font_montserrat_24, 0);
     lv_obj_align(s_lbl_result_title, LV_ALIGN_TOP_LEFT, 70, 2);
+
+    /* database name, right after "Results" */
+    s_lbl_db_name_results = lv_label_create(card);
+    lv_label_set_text(s_lbl_db_name_results, "");
+    lv_obj_set_style_text_color(s_lbl_db_name_results, lv_color_hex(0xF0F6FC), 0);
+    lv_obj_set_style_text_font(s_lbl_db_name_results, &lv_font_montserrat_20, 0);
+    lv_obj_align_to(s_lbl_db_name_results, s_lbl_result_title, LV_ALIGN_OUT_RIGHT_MID, 6, 0);
 
     s_lbl_result_meta = lv_label_create(card);
     lv_label_set_text(s_lbl_result_meta, "Top 0  ef 0  0.0 ms");
@@ -654,6 +670,18 @@ void display_set_ip(const char *ip) {
         snprintf(buf, sizeof(buf), "Wi-Fi: %s", ip);
         lv_label_set_text(s_lbl_ip, buf);
         lv_label_set_text(s_lbl_splash_ip, buf);
+        xSemaphoreGive(s_lvgl_mux);
+    }
+}
+
+void display_set_db_name(const char *name) {
+    if (xSemaphoreTake(s_lvgl_mux, pdMS_TO_TICKS(100))) {
+        char bracketed[16];
+        snprintf(bracketed, sizeof(bracketed), "[%s]", name);
+        lv_label_set_text(s_lbl_db_name_idle, bracketed);
+        lv_label_set_text(s_lbl_db_name_results, bracketed);
+        lv_obj_align_to(s_lbl_db_name_idle, s_lbl_subtitle, LV_ALIGN_OUT_RIGHT_MID, 6, 0);
+        lv_obj_align_to(s_lbl_db_name_results, s_lbl_result_title, LV_ALIGN_OUT_RIGHT_MID, 6, 0);
         xSemaphoreGive(s_lvgl_mux);
     }
 }

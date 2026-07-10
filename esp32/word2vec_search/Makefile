@@ -1,4 +1,9 @@
 PORT        ?= /dev/ttyACM0
+
+# Product quantization config toggle
+# Override: make build USE_PQ=0  (or: make docker-build USE_PQ=0)
+USE_PQ      ?= 1
+
 PROJECT_DIR := $(shell pwd)
 REPO_ROOT   := $(abspath $(PROJECT_DIR)/../..)
 IMAGE_NAME  := nn20db-esp32-idf
@@ -28,7 +33,7 @@ DOCKER_RUN_TTY := docker run --rm -it \
 all: build
 
 build:
-	idf.py build
+	idf.py -DUSE_PQ=$(USE_PQ) build
 
 flash:
 	idf.py -p $(PORT) flash
@@ -54,7 +59,7 @@ docker-set-target: docker-image
 	$(DOCKER_RUN) sh -c "rm -rf build sdkconfig && idf.py set-target esp32s3"
 
 docker-build: docker-image
-	$(DOCKER_RUN) sh -c "[ -f sdkconfig ] || idf.py set-target esp32s3; idf.py build"
+	$(DOCKER_RUN) sh -c "[ -f sdkconfig ] || idf.py set-target esp32s3; idf.py -DUSE_PQ=$(USE_PQ) build"
 
 docker-flash: docker-image
 	$(DOCKER_RUN_TTY) sh -c \

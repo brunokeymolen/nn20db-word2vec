@@ -60,6 +60,10 @@ static int sd_storage_mount(const char *mount_point, void **out_handle)
     ESP_LOGI(TAG, "Mounting SD card at %s ...", mount_point);
 
     sdmmc_host_t host = SDMMC_HOST_DEFAULT();
+    /* SDMMC_HOST_DEFAULT() runs at SDMMC_FREQ_DEFAULT (20 MHz); high-speed
+     * mode doubles the bus clock. Drop back to default if the card or
+     * wiring proves unreliable at 40 MHz. */
+    host.max_freq_khz = SDMMC_FREQ_HIGHSPEED;
 
     sdmmc_slot_config_t slot_cfg = {};
     slot_cfg.clk   = PIN_SD_CLK;

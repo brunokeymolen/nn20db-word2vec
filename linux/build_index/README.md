@@ -25,6 +25,31 @@ cmake -B build -DCMAKE_BUILD_TYPE=Release
 cmake --build build -j$(nproc)
 ```
 
+### Product quantization (PQ)
+
+PQ-compressed vectors are used by default. To build without PQ (full fp32
+vectors), use `config_fp32.h` instead of `config_pq.h`:
+
+```bash
+# with PQ (default)
+make
+
+# without PQ
+make USE_PQ=0
+```
+
+Or with CMake:
+
+```bash
+# with PQ (default)
+cmake -B build -DCMAKE_BUILD_TYPE=Release
+cmake --build build -j$(nproc)
+
+# without PQ
+cmake -B build -DCMAKE_BUILD_TYPE=Release -DUSE_PQ=OFF
+cmake --build build -j$(nproc)
+```
+
 ## Run
 
 Full vocabulary (~3M words, needs ~4 GB RAM and a large SD card):
@@ -60,6 +85,15 @@ More self-test vectors for steadier timing:
     ~/data/GoogleNews-vectors-negative300.bin \
     ~/data/word2vec_db \
     --test 10000
+```
+
+Example
+```
+make
+date; time ./build_word2vec_index /home/bruno/datasets/GoogleNews-vectors-negative300.bin /tmp/w2vpq
+
+make USE_PQ=0
+date; time ./build_word2vec_index /home/bruno/datasets/GoogleNews-vectors-negative300.bin /tmp/w2vfp32
 ```
 
 ## Self-test output (example)

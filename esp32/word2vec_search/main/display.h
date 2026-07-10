@@ -50,6 +50,9 @@ void display_show_idle(void);
 /* Update the idle screen with the device's Wi-Fi IP address. */
 void display_set_ip(const char *ip);
 
+/* Set the database name shown next to "word2vec" / "Results" (8.3 basename). */
+void display_set_db_name(const char *name);
+
 /* Transition to the searching state (spinner). */
 void display_show_searching(void);
 

@@ -183,12 +183,30 @@ class _IndexConfig(ctypes.Structure):
     ]
 
 
+class _DimensionPq(ctypes.Structure):
+    _pack_ = 1
+    _fields_ = [
+        ("num_segments",     ctypes.c_uint8),
+        ("bits_per_segment", ctypes.c_uint8),
+        ("subvector_dim",    ctypes.c_uint16),
+    ]
+
+
+class _VectorUnion(ctypes.Union):
+    _pack_ = 1
+    _fields_ = [
+        ("reserved", ctypes.c_int),
+        ("pq",       _DimensionPq),
+    ]
+
+
 class _VectorConfig(ctypes.Structure):
     _pack_ = 1
     _fields_ = [
         ("type",          ctypes.c_int),
         ("dimension",     ctypes.c_int),
         ("metadata_size", ctypes.c_int),
+        ("union",         _VectorUnion),
     ]
 
 
@@ -266,6 +284,7 @@ INDEX_HNSW   = 1
 # nn20db_dimension_type
 DIM_FLOAT32 = 0
 DIM_BIT     = 1
+DIM_PQ      = 2
 
 # nn20db_metric_type
 METRIC_COSINE          = 0
@@ -277,6 +296,7 @@ METRIC_HAMMING         = 5
 METRIC_JACCARD         = 6
 METRIC_COSINE_F32      = 7
 METRIC_EUCLIDEAN_F32   = 8
+METRIC_EUCLIDEAN_PQ    = 9
 
 # error codes
 ERROR_OK                       =  0
@@ -297,6 +317,7 @@ ERROR_INDEX_HEAP_DISCARDED     = -14
 ERROR_EMPTY                    = -15
 ERROR_NOT_EXIST                = -16
 ERROR_DB_ALREADY_EXISTS        = -17
+ERROR_NOT_TRAINED              = -18
 
 _ERROR_NAMES = {v: k for k, v in globals().items() if k.startswith("ERROR_")}
 
@@ -310,6 +331,7 @@ _METRIC_NAMES = {
     "jaccard":        METRIC_JACCARD,
     "cosine_f32":     METRIC_COSINE_F32,
     "euclidean_f32":  METRIC_EUCLIDEAN_F32,
+    "euclidean_pq":   METRIC_EUCLIDEAN_PQ,
 }
 
 
@@ -442,8 +464,14 @@ class CacheConfig:
 class DatabaseConfig:
     dimension: int = 0
     metadata_size: int = 0
-    vector_type: str = "float32"   # "float32" or "bit"
+    vector_type: str = "float32"   # "float32", "bit" or "pq"
     metric: str = "euclidean"
+    # PQ parameters (vector_type == "pq"); num_segments * subvector_dim
+    # must equal dimension.  Ignored when opening an existing database —
+    # the stored vector config wins.
+    pq_num_segments: int = 0
+    pq_bits_per_segment: int = 8
+    pq_subvector_dim: int = 0
     storage: Union[LfsStorageConfig, MemoryStorageConfig] = dataclasses.field(
         default_factory=LfsStorageConfig
     )
@@ -459,9 +487,16 @@ def _to_c_config(cfg: DatabaseConfig) -> _Config:
     c = _Config()
 
     # vector
-    c.vector.type          = DIM_BIT if cfg.vector_type == "bit" else DIM_FLOAT32
+    _vector_types = {"float32": DIM_FLOAT32, "bit": DIM_BIT, "pq": DIM_PQ}
+    if cfg.vector_type not in _vector_types:
+        raise ValueError(f"Unknown vector_type '{cfg.vector_type}'. Valid: {list(_vector_types)}")
+    c.vector.type          = _vector_types[cfg.vector_type]
     c.vector.dimension     = cfg.dimension
     c.vector.metadata_size = cfg.metadata_size
+    if cfg.vector_type == "pq":
+        c.vector.union.pq.num_segments     = cfg.pq_num_segments
+        c.vector.union.pq.bits_per_segment = cfg.pq_bits_per_segment
+        c.vector.union.pq.subvector_dim    = cfg.pq_subvector_dim
 
     # metric
     metric_id = _METRIC_NAMES.get(cfg.metric)

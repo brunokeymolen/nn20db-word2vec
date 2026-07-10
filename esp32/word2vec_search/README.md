@@ -56,6 +56,24 @@ idf.py set-target esp32s3
 make build
 ```
 
+### Product quantization (PQ)
+
+PQ-compressed vectors are used by default (expects the database at
+`/sdcard/nand0/w2vpq`, matching `--limit`/`config_pq.h`). To build for the
+full fp32 database instead (`/sdcard/nand0/w2vfp32`, `config_fp32.h`):
+
+```bash
+# with PQ (default)
+make build
+# or in the container:
+make docker-build
+
+# without PQ
+make build USE_PQ=0
+# or in the container:
+make docker-build USE_PQ=0
+```
+
 ## Flash and monitor
 
 ```bash
