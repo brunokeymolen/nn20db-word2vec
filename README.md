@@ -60,12 +60,12 @@ by adjusting paths):
 
 ```bash
 # Linux SDK
-./scripts/install-sdk.sh linux \
-  https://github.com/brunokeymolen/nn20db-sdk/releases/download/release-1.1.0/nn20db-sdk-linux-1.1.0.tar.gz
+./install-sdk.sh linux \
+  https://github.com/brunokeymolen/nn20db-sdk/releases/download/release-1.2.0/nn20db-sdk-linux-v1.2.0.tar.gz
 
 # ESP32-S3 SDK
-./scripts/install-sdk.sh esp32 \
-  https://github.com/brunokeymolen/nn20db-sdk/releases/download/release-1.1.0/nn20db-sdk-esp32s3-1.1.0.tar.gz
+./install-sdk.sh esp32 \
+  https://github.com/brunokeymolen/nn20db-sdk/releases/download/release-1.2.0/nn20db-sdk-esp32s3-v1.2.0.tar.gz
 ```
 
 Both commands install into `sdk/linux/current/` and `sdk/esp32/current/`

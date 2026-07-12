@@ -29,7 +29,10 @@
  *   2. Run nn20db_vector_search_ef with the requested k and ef_search.
  *   3. Fetch word_meta_t for each result.
  *   4. Send k × 36 bytes (32-byte word label + 4-byte float32 distance).
- *   5. Close connection.
+ *   5. Send a 32-byte I/O stats trailer ("N2IO" magic) with the storage
+ *      read counters attributed to this search. Clients that only read
+ *      k × 36 bytes simply ignore it.
+ *   6. Close connection.
  */
 
 #include <stdio.h>
@@ -66,12 +69,26 @@ typedef struct {
     char  word[32];
     float distance;
 } result_wire_t;
+
+/* Trailer appended after the k results: storage I/O attributed to this
+ * search (delta of the cumulative nn20db counters around the call). */
+#define STATS_WIRE_MAGIC 0x4F49324EU  /* "N2IO" little-endian */
+typedef struct {
+    uint32_t magic;        /* STATS_WIRE_MAGIC */
+    uint32_t search_us;    /* server-side search time */
+    uint32_t gets;         /* storage object fetches */
+    uint32_t cache_hits;   /* served from the object cache */
+    uint32_t backend_gets; /* fetches that hit the SD card path */
+    uint32_t preads;       /* read syscalls to the medium */
+    uint64_t bytes_read;   /* bytes transferred from the medium */
+} stats_wire_t;
 #pragma pack(pop)
 
 _Static_assert(sizeof(request_wire_t) == (4 + (NET_SERVER_DIM * 4)),
                "request_wire_t size");
 _Static_assert(sizeof(word_meta_t)   == 32, "word_meta_t size");
 _Static_assert(sizeof(result_wire_t) == 36, "result_wire_t size");
+_Static_assert(sizeof(stats_wire_t)  == 32, "stats_wire_t size");
 
 /* ── helpers ─────────────────────────────────────────────────────────────── */
 
@@ -133,9 +150,29 @@ static void handle_connection(int conn_fd, NN20DB *db) {
     int64_t t0 = esp_timer_get_time();
     display_show_searching();
 
+    /* Snapshot cumulative I/O counters around the search so the trailer
+     * carries only this query's reads (metadata gets below excluded). */
+    nn20db_io_stats io_before;
+    memset(&io_before, 0, sizeof(io_before));
+    (void)nn20db_io_stats_get(db, &io_before);
+
     int rc = nn20db_vector_search_ef(db, request.query, effective_k,
                                      ef_search, results);
     int64_t search_us = esp_timer_get_time() - t0;
+
+    nn20db_io_stats io_after;
+    memset(&io_after, 0, sizeof(io_after));
+    (void)nn20db_io_stats_get(db, &io_after);
+
+    stats_wire_t stats = {
+        .magic        = STATS_WIRE_MAGIC,
+        .search_us    = (uint32_t)search_us,
+        .gets         = io_after.gets         - io_before.gets,
+        .cache_hits   = io_after.cache_hits   - io_before.cache_hits,
+        .backend_gets = io_after.backend_gets - io_before.backend_gets,
+        .preads       = io_after.preads       - io_before.preads,
+        .bytes_read   = io_after.bytes_read   - io_before.bytes_read,
+    };
 
     if (rc != NN20DB_ERROR_OK) {
         ESP_LOGW(TAG, "search failed rc=%d", rc);
@@ -145,7 +182,9 @@ static void handle_connection(int conn_fd, NN20DB *db) {
         wire[0].distance = (float)rc;
         memcpy(words[0], wire[0].word, sizeof(words[0]));
         display_show_results(words, 1, ef_search, (float)(search_us / 1000.0));
-        send_all(conn_fd, wire, (size_t)effective_k * sizeof(*wire));
+        if (send_all(conn_fd, wire, (size_t)effective_k * sizeof(*wire)) == 0) {
+            send_all(conn_fd, &stats, sizeof(stats));
+        }
         return;
     }
 
@@ -166,12 +205,18 @@ static void handle_connection(int conn_fd, NN20DB *db) {
     /* display results */
     display_show_results(words, effective_k, ef_search, (float)(search_us / 1000.0));
 
-    ESP_LOGI(TAG, "search OK: k=%d ef=%d top1='%.32s' d=%.4f  t=%lldus",
+    ESP_LOGI(TAG, "search OK: k=%d ef=%d top1='%.32s' d=%.4f  t=%lldus "
+             "io: gets=%u hits=%u sd=%u preads=%u bytes=%llu",
              effective_k, ef_search, wire[0].word,
-             (double)wire[0].distance, (long long)search_us);
+             (double)wire[0].distance, (long long)search_us,
+             (unsigned)stats.gets, (unsigned)stats.cache_hits,
+             (unsigned)stats.backend_gets, (unsigned)stats.preads,
+             (unsigned long long)stats.bytes_read);
 
     /* send response */
-    send_all(conn_fd, wire, (size_t)effective_k * sizeof(*wire));
+    if (send_all(conn_fd, wire, (size_t)effective_k * sizeof(*wire)) == 0) {
+        send_all(conn_fd, &stats, sizeof(stats));
+    }
 }
 
 /* ── server task ─────────────────────────────────────────────────────────── */

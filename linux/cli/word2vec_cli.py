@@ -96,6 +96,8 @@ METADATA_SIZE = 32          # sizeof(word_meta_t): char word[32]
 WIRE_QUERY_HEADER_BYTES = 4            # uint16 k + uint16 ef_search
 WIRE_QUERY_BYTES  = WIRE_QUERY_HEADER_BYTES + (DIM * 4)
 WIRE_RESULT_BYTES = METADATA_SIZE + 4  # 36 bytes: 32-byte word + 4-byte float32
+WIRE_STATS_BYTES  = 32                 # optional trailer: I/O stats
+WIRE_STATS_MAGIC  = 0x4F49324E         # "N2IO" little-endian
 ESP32_SEARCH_TIMEOUT_SEC = 120.0
 DEFAULT_EF_SEARCH = 15
 ESP32_ORANGE_ANSI = "\033[38;2;244;162;97m"
@@ -276,13 +278,17 @@ def esp32_search(
     query_vec: np.ndarray,
     k: int,
     ef: int,
-) -> List[Tuple[str, float]]:
+) -> Tuple[List[Tuple[str, float]], Optional[Dict[str, int]]]:
     """
     Send query vector to ESP32 TCP server and receive top-k results.
 
     Wire protocol:
         TX: uint16 k + uint16 ef_search + 300 × float32 LE  (1204 bytes)
         RX: k × (32-byte word + 4-byte float32)  (k × 36 bytes)
+            + optional 32-byte I/O stats trailer ("N2IO" magic)
+
+    Returns (results, stats) where stats is None when the server predates
+    the trailer.
     """
     payload = struct.pack("<HH", k, ef) + query_vec.astype(np.float32).tobytes()
     assert len(payload) == WIRE_QUERY_BYTES
@@ -299,6 +305,17 @@ def esp32_search(
                 break
             buf += chunk
 
+        # Optional stats trailer: read until EOF (server closes the socket).
+        trailer = b""
+        while len(trailer) < WIRE_STATS_BYTES:
+            try:
+                chunk = s.recv(WIRE_STATS_BYTES - len(trailer))
+            except socket.timeout:
+                break
+            if not chunk:
+                break
+            trailer += chunk
+
     results = []
     for i in range(0, len(buf) - WIRE_RESULT_BYTES + 1, WIRE_RESULT_BYTES):
         word_bytes = buf[i : i + METADATA_SIZE]
@@ -306,7 +323,21 @@ def esp32_search(
         word = word_bytes.rstrip(b"\x00").decode("utf-8", errors="replace")
         (dist,) = struct.unpack("<f", dist_bytes)
         results.append((word, dist))
-    return results
+
+    stats = None
+    if len(trailer) == WIRE_STATS_BYTES:
+        (magic, search_us, gets, cache_hits,
+         backend_gets, preads, bytes_read) = struct.unpack("<6IQ", trailer)
+        if magic == WIRE_STATS_MAGIC:
+            stats = {
+                "search_us": search_us,
+                "gets": gets,
+                "cache_hits": cache_hits,
+                "backend_gets": backend_gets,
+                "preads": preads,
+                "bytes_read": bytes_read,
+            }
+    return results, stats
 
 
 # ── result printer ───────────────────────────────────────────────────────────
@@ -379,9 +410,21 @@ def repl(
             try:
                 print(f"  {colorize('ESP32 Search...', ESP32_ORANGE_ANSI)}")
                 t0 = time.perf_counter()
-                results = esp32_search(host, port, query_vec, k=k, ef=effective_ef)
+                results, io_stats = esp32_search(host, port, query_vec, k=k, ef=effective_ef)
                 elapsed_ms = (time.perf_counter() - t0) * 1000
                 print(f"  {colorize(f'ESP32 search (ef {effective_ef}, {elapsed_ms:.1f} ms)', ESP32_YELLOW_ANSI)}")
+                if io_stats:
+                    io_line = (
+                        "ESP32 io    (search {:.1f} ms: {} gets, {} cache hits, "
+                        "{} sd reads, {:.1f} KiB)".format(
+                            io_stats["search_us"] / 1000.0,
+                            io_stats["gets"],
+                            io_stats["cache_hits"],
+                            io_stats["backend_gets"],
+                            io_stats["bytes_read"] / 1024.0,
+                        )
+                    )
+                    print(f"  {colorize(io_line, ESP32_YELLOW_ANSI)}")
                 print_results(results, f"ESP32 {host}:{port}")
             except Exception as exc:
                 print(f"  ESP32 search error: {exc}")

@@ -51,9 +51,11 @@ idf.py menuconfig
 ## Build for ESP32-S3 (first time)
 
 ```bash
+get_idf
+cd esp32/word2vec_search/
 rm -rf build sdkconfig
 idf.py set-target esp32s3
-make build
+make build USE_PQ=0
 ```
 
 ### Product quantization (PQ)
@@ -113,9 +115,16 @@ spinner then shows the top-10 results list.
 ## Wire protocol
 
 ```
-Linux → ESP32:   300 × float32 LE  =  1200 bytes
-ESP32 → Linux:   10 × (32-byte word + 4-byte float32)  =  360 bytes
+Linux → ESP32:   uint16 k + uint16 ef_search + 300 × float32 LE  =  1204 bytes
+ESP32 → Linux:   k × (32-byte word + 4-byte float32)             =  k × 36 bytes
+                 + 32-byte I/O stats trailer (optional to read)
 ```
+
+The trailer starts with the magic `0x4F49324E` ("N2IO") followed by
+`search_us`, `gets`, `cache_hits`, `backend_gets`, `preads` (uint32 each)
+and `bytes_read` (uint64) — the nn20db storage reads attributed to the
+query. Clients that only read `k × 36` bytes are unaffected; the CLI
+prints the trailer as an `ESP32 io` line.
 
 ## Pin assignments
 
@@ -147,3 +156,8 @@ ESP32 → Linux:   10 × (32-byte word + 4-byte float32)  =  360 bytes
 |-----------------------------|------------------------------------------------|
 | `sdkconfig.defaults`        | Shared: FreeRTOS stacks, FAT, VFS, USB CDC     |
 | `sdkconfig.defaults.esp32s3`| S3: Octal PSRAM, Wi-Fi, 16 MB Flash            |
+
+
+## Example of the CLI
+
+python3 word2vec_cli.py  --db <mount>/vectordb/w2vfp32 --word-vectors <mount>/datasets/GoogleNews-vectors-negative300.bin  --esp32 192.168.0.207:9900

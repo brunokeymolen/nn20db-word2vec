@@ -7,6 +7,7 @@
 #include "net_server.h"
 
 #define DB_PATH         "/sdcard/nand0/w2vpq"
+//#define DB_PATH         "/sdcard/nand0/w2v3mpq"
 
 static const nn20db_config s_nn20db_config = {
     .vector = {
