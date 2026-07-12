@@ -7,6 +7,27 @@ HNSW on Linux + ESP32-S3 (Waveshare ESP32-S3-Touch-LCD-1.47).
 
 [![Watch the demo on YouTube](https://img.youtube.com/vi/uMlM1yzEbDw/hqdefault.jpg)](https://www.youtube.com/watch?v=uMlM1yzEbDw)
 
+
+note: nn20db-sdk v1.2.0 introduces the NN20DB_STORAGE_FLAGS_READ_ONLY setting, which significantly reduces search time.
+```
+word2vec> Paris - France + Poland
+  Query vector built from: Paris, -France, Poland
+  ESP32 Search...
+  ESP32 search (ef 15, 1333.5 ms)
+  ESP32 io    (search 1134.8 ms: 687 gets, 105 cache hits, 582 sd reads, 1600.8 KiB)
+  [ESP32 192.168.0.207:9900]
+    1  Warsaw                            0.673194
+    2  Prague                            0.787582
+    3  Budapest                          0.810657
+    4  Poland                            0.811766
+    5  Krakow                            0.864130
+    6  Poznań                            0.895379
+    7  Kraków                            0.908567
+    8  Bratislava                        0.915602
+    9  Moscow                            0.920169
+   10  Polish                            0.920476
+```
+
 ## Overview
 
 ```
